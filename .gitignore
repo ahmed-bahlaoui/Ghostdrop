@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+
+# PNPM
+.pnpm-store/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Next.js
+.next/
+out/
+
+# Build outputs
+dist/
+build/
+
+# TypeScript
+*.tsbuildinfo
+
+# Coverage
+coverage/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+
+# Docker
+docker-data/
+*.pid
+
+# Temporary files
+tmp/
+temp/
+
+# MinIO local data (if mounted locally)
+minio-data/
+
+# PostgreSQL local data (if mounted locally)
+postgres-data/
+
+# Redis local data
+redis-data/
