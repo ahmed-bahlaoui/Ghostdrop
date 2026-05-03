@@ -19,6 +19,23 @@ fastify.get('/health', async (request, reply) => {
 });
 
 
+fastify.post("/transfers", async (request, reply) => {
+    // This endpoints creates a transfer session
+//     Client requests new transfer
+// → backend generates transfer code
+// → backend generates object key
+// → backend stores metadata in Postgres
+// → backend returns transfer info
+
+
+    // Accepts metadata
+    // Set expiration
+    // Creation upload session
+    // return retrival code
+
+
+})
+
 /**
  * Run the server!
  */
