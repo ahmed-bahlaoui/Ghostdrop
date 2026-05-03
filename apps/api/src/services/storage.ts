@@ -1,13 +1,6 @@
 import { Client } from "minio";
-import { existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 
-export const envPath = resolve(
-	dirname(fileURLToPath(import.meta.url)),
-	"../../.env",
-);
-if (existsSync(envPath)) process.loadEnvFile(envPath);
+const BUCKET_NAME = "ghostdrop-transfers";
 
 const minio = new Client({
 	endPoint: process.env.MINIO_ENDPOINT || "localhost",
@@ -17,4 +10,24 @@ const minio = new Client({
 	secretKey: process.env.MINIO_SECRET_KEY || "minioadmin",
 });
 
+/**
+ * Ensures the required storage bucket exists in MinIO.
+ * Should be called during application startup.
+ */
+export async function initializeStorage(): Promise<void> {
+	try {
+		const exists = await minio.bucketExists(BUCKET_NAME);
+		if (!exists) {
+			await minio.makeBucket(BUCKET_NAME);
+			console.log(`[Storage] Bucket "${BUCKET_NAME}" created successfully.`);
+		} else {
+			console.log(`[Storage] Bucket "${BUCKET_NAME}" already exists.`);
+		}
+	} catch (err) {
+		console.error("[Storage] Failed to initialize MinIO bucket:", err);
+		throw err;
+	}
+}
+
+export { BUCKET_NAME };
 export default minio;
