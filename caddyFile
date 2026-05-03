@@ -9,7 +9,7 @@ localhost, 127.0.0.1, :443 {
 	tls internal
 
 	# Reverse proxy to the Fastify API running on the host
-	reverse_proxy host.docker.internal:3001
+	reverse_proxy host.docker.internal:3100
 
 	# Modern compression
 	encode zstd gzip

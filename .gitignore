@@ -60,3 +60,6 @@ redis-data/
 # Agents
 AGENTS.md
 GEMINI.md
+
+# Text files
+*.txt
