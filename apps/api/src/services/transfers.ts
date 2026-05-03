@@ -47,7 +47,7 @@ export async function createTransfer(
 	];
 
 	const result = await pool.query<Transfer>(query, values);
-	return result.rows[0];
+	return result.rows[0] as Transfer;
 }
 
 /**

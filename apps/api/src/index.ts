@@ -4,6 +4,7 @@ import { initializeStorage } from "./services/storage.ts";
 import { generateTransferCode } from "./utils/generate_session_transfer_code.ts";
 import { generateObjectKey } from "./utils/generate_minio_object_key.ts";
 import { createTransfer, getTransferByCode } from "./services/transfers.ts";
+import redis from "./services/redis.ts";
 
 const fastify = Fastify({
 	logger: true,
@@ -23,7 +24,13 @@ fastify.get("/", async () => {
 });
 
 fastify.get("/health", async () => {
-	return { status: "ok" };
+	try {
+		await redis.ping();
+		return { status: "ok", redis: "up" };
+	} catch (err) {
+		console.log("Redis health check failed:", err);
+		return { status: "error", redis: "down" };
+	}
 });
 
 /**
@@ -59,6 +66,14 @@ fastify.post("/transfers", async (request, reply) => {
 			expires_at: expiresAt,
 		});
 
+		// Store in Redis for fast-path lookup and auto-expiration
+		await redis.set(
+			`transfer:code:${code}`,
+			transfer.id,
+			"EX",
+			expiresInMinutes * 60,
+		);
+
 		return {
 			code: transfer.code,
 			objectKey: transfer.object_key,
@@ -77,16 +92,20 @@ fastify.post("/transfers", async (request, reply) => {
  */
 fastify.get("/transfers/:code", async (request, reply) => {
 	const { code } = request.params as { code: string };
+	const upperCode = code.toUpperCase();
 
-	const transfer = await getTransferByCode(code.toUpperCase());
+	// 1. Fast-Path: Check Redis first
+	const transferId = await redis.get(`transfer:code:${upperCode}`);
 
-	if (!transfer) {
-		return reply.status(404).send({ error: "Transfer not found" });
+	if (!transferId) {
+		return reply.status(404).send({ error: "Transfer not found or expired" });
 	}
 
-	// Check if expired
-	if (new Date() > new Date(transfer.expires_at)) {
-		return reply.status(410).send({ error: "Transfer has expired" });
+	// 2. Database: Fetch metadata
+	const transfer = await getTransferByCode(upperCode);
+
+	if (!transfer) {
+		return reply.status(404).send({ error: "Transfer metadata missing" });
 	}
 
 	return {
