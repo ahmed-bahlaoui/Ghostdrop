@@ -4,6 +4,9 @@ node_modules/
 # PNPM
 .pnpm-store/
 
+## biome
+biome.json
+
 # Logs
 logs
 *.log
@@ -53,3 +56,7 @@ postgres-data/
 
 # Redis local data
 redis-data/
+
+# Agents
+AGENTS.md
+GEMINI.md

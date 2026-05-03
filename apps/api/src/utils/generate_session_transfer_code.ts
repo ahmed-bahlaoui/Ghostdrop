@@ -1,16 +1,19 @@
-// Charset: base28 - no ambiguous chars
+import { webcrypto } from "node:crypto";
+
 const CHARSET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-function generateCode(): string {
-    const bytes = crypto.getRandomValues(new Uint8Array(6));
-    return Array.from(bytes)
-        .map(b => CHARSET[b % CHARSET.length])
-        .join('')
-        .replace(/(.{3})/, '$1-'); // "K7M-X9Q"
-}
+/**
+ * Generates a human-friendly 6-character transfer code (e.g., "K7M-X9Q").
+ * Uses a restricted charset to avoid ambiguous characters.
+ */
+export function generateTransferCode(): string {
+	const bytes = new Uint8Array(6);
+	webcrypto.getRandomValues(bytes);
+	const code = Array.from(bytes)
 
+		.map((b) => CHARSET[b % CHARSET.length])
+		.join("");
 
-for (let index = 0; index < 10; index++) {
-    console.log(generateCode());
-    
+	// Format as XXX-XXX
+	return `${code.slice(0, 3)}-${code.slice(3)}`;
 }
