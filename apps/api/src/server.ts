@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import multipart from "@fastify/multipart";
+import rateLimit from "@fastify/rate-limit";
 import { z } from "zod";
 import minio, { BUCKET_NAME, initializeStorage } from "./services/storage.ts";
 import { generateTransferCode } from "./utils/generate_session_transfer_code.ts";
@@ -14,6 +15,20 @@ import { startCleanupWorker } from "./services/cleanup.ts";
 
 const fastify = Fastify({
 	logger: true,
+});
+
+// Register Rate Limiting (using Redis)
+fastify.register(rateLimit, {
+	global: true,
+	max: 100, // 100 requests per minute
+	timeWindow: "1 minute",
+	redis,
+	keyGenerator: (request) => {
+		// Trust the IP from Caddy (X-Forwarded-For)
+		return (
+			(request.headers["x-forwarded-for"] as string) || request.ip || "unknown"
+		);
+	},
 });
 
 // Register Multipart for streaming uploads
@@ -49,8 +64,18 @@ fastify.get("/health", async () => {
 /**
  * Handshake: Create a transfer session
  */
-fastify.post("/transfers", async (request, reply) => {
-	const parseResult = CreateTransferSchema.safeParse(request.body);
+fastify.post(
+	"/transfers",
+	{
+		config: {
+			rateLimit: {
+				max: 5,
+				timeWindow: "1 minute",
+			},
+		},
+	},
+	async (request, reply) => {
+		const parseResult = CreateTransferSchema.safeParse(request.body);
 
 	if (!parseResult.success) {
 		return reply.status(400).send({

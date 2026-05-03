@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS transfers (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Testing what is already in our db:
+-- SELECT mime_type, original_filename,  code  FROM transfers ORDER BY created_at DESC;
+
 -- Performance Indexes
 -- Index for finding transfers by their short code (the primary retrieval method)
 CREATE INDEX IF NOT EXISTS idx_transfers_code ON transfers (code);

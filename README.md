@@ -1,10 +1,7 @@
-
-
 ## Project folder structure
 
 ```
 ghostdrop
-├─ AGENTS.md
 ├─ apps
 │  ├─ api
 │  │  ├─ package.json
@@ -12,23 +9,21 @@ ghostdrop
 │  │  │  ├─ config
 │  │  │  ├─ db
 │  │  │  │  ├─ migrate.ts
-│  │  │  │  ├─ migrations
-│  │  │  │  │  └─ 001_create_transfers.sql
-│  │  │  │  └─ pool.ts
-│  │  │  ├─ index.ts
+│  │  │  │  └─ migrations
+│  │  │  │     └─ 001_create_transfers.sql
 │  │  │  ├─ routes
+│  │  │  ├─ server.ts
 │  │  │  ├─ services
-│  │  │  │  ├─ minio.ts
+│  │  │  │  ├─ cleanup.ts
 │  │  │  │  ├─ pool.ts
-│  │  │  │  ├─ postgres.ts
 │  │  │  │  ├─ redis.ts
-│  │  │  │  └─ storage.ts
+│  │  │  │  ├─ storage.ts
+│  │  │  │  └─ transfers.ts
 │  │  │  └─ utils
 │  │  │     ├─ generate_minio_object_key.ts
 │  │  │     └─ generate_session_transfer_code.ts
 │  │  └─ tsconfig.json
 │  └─ web
-│     ├─ AGENTS.md
 │     ├─ app
 │     │  ├─ favicon.ico
 │     │  ├─ globals.css

@@ -1,0 +1,35 @@
+{
+	# Global options for Caddy
+	email info@ghostdrop.app
+}
+
+# Explicitly handle localhost and IP for local development
+localhost, 127.0.0.1, :443 {
+	# Use Caddy's internal CA for local development certificates
+	tls internal
+
+	# Reverse proxy to the Fastify API running on the host
+	reverse_proxy host.docker.internal:3001
+
+	# Modern compression
+	encode zstd gzip
+
+	# Security Headers
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer-when-downgrade"
+		Permissions-Policy "interest-cohort=()"
+	}
+
+	# Logging
+	log {
+		output file /data/access.log
+	}
+}
+
+# Redirect HTTP to HTTPS
+:80 {
+	redir https://{host}{uri}
+}
