@@ -1,17 +1,4 @@
 import { Pool } from "pg";
-import { existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-
-// loading environment variables from .env file if it exists in the grandparent directory of this file
-export const envPath = resolve(
-	dirname(fileURLToPath(import.meta.url)),
-	"../../.env",
-);
-
-if (existsSync(envPath)) {
-	process.loadEnvFile(envPath);
-}
 
 function requireEnv(name: string) {
 	const value = process.env[name];

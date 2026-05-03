@@ -3,7 +3,7 @@ import { Client } from "minio";
 const BUCKET_NAME = "ghostdrop-transfers";
 
 const minio = new Client({
-	endPoint: process.env.MINIO_ENDPOINT || "localhost",
+	endPoint: process.env.MINIO_ENDPOINT || "127.0.0.1",
 	port: Number(process.env.MINIO_PORT) || 9000,
 	useSSL: false,
 	accessKey: process.env.MINIO_ACCESS_KEY || "minioadmin",
