@@ -1,8 +1,10 @@
 
 
 ## Project folder structure
+
 ```
 ghostdrop
+├─ AGENTS.md
 ├─ apps
 │  ├─ api
 │  │  ├─ package.json
