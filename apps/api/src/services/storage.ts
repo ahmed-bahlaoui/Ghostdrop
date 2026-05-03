@@ -29,5 +29,18 @@ export async function initializeStorage(): Promise<void> {
 	}
 }
 
+/**
+ * Deletes an object from the storage bucket.
+ */
+export async function deleteObject(objectKey: string): Promise<void> {
+	try {
+		await minio.removeObject(BUCKET_NAME, objectKey);
+		console.log(`[Storage] Object deleted: ${objectKey}`);
+	} catch (err) {
+		console.error(`[Storage] Failed to delete object ${objectKey}:`, err);
+		// We don't throw here so the cleanup worker can continue with other files
+	}
+}
+
 export { BUCKET_NAME };
 export default minio;

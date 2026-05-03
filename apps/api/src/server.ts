@@ -10,6 +10,7 @@ import {
 	incrementDownloadCount,
 } from "./services/transfers.ts";
 import redis from "./services/redis.ts";
+import { startCleanupWorker } from "./services/cleanup.ts";
 
 const fastify = Fastify({
 	logger: true,
@@ -134,7 +135,9 @@ fastify.post("/transfers/:code/upload", async (request, reply) => {
 	// 1. Validate Session
 	const transferId = await redis.get(`transfer:code:${upperCode}`);
 	if (!transferId) {
-		return reply.status(404).send({ error: "Invalid or expired upload session" });
+		return reply
+			.status(404)
+			.send({ error: "Invalid or expired upload session" });
 	}
 
 	const transfer = await getTransferByCode(upperCode);
@@ -156,7 +159,7 @@ fastify.post("/transfers/:code/upload", async (request, reply) => {
 			transfer.object_key,
 			data.file,
 			Number(transfer.size_bytes),
-			{ "Content-Type": transfer.mime_type }
+			{ "Content-Type": transfer.mime_type },
 		);
 
 		return { message: "Upload successful", code: transfer.code };
@@ -185,7 +188,10 @@ fastify.get("/transfers/:code/download", async (request, reply) => {
 	}
 
 	// 2. Check Download Limits
-	if (transfer.max_downloads && transfer.download_count >= transfer.max_downloads) {
+	if (
+		transfer.max_downloads &&
+		transfer.download_count >= transfer.max_downloads
+	) {
 		return reply.status(403).send({ error: "Download limit reached" });
 	}
 
@@ -199,7 +205,7 @@ fastify.get("/transfers/:code/download", async (request, reply) => {
 		// Force download with original filename
 		reply.header(
 			"Content-Disposition",
-			`attachment; filename="${transfer.original_filename}"`
+			`attachment; filename="${transfer.original_filename}"`,
 		);
 
 		// 5. Pipe to client
@@ -217,6 +223,10 @@ fastify.get("/transfers/:code/download", async (request, reply) => {
 const start = async () => {
 	try {
 		await initializeStorage();
+
+		// Start the background cleanup worker (runs every 5 minutes by default)
+		startCleanupWorker();
+
 		await fastify.listen({ port: 3001, host: "0.0.0.0" });
 		console.log("Server listening on http://localhost:3001");
 	} catch (err) {

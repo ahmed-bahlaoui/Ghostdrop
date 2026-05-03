@@ -70,3 +70,19 @@ export async function incrementDownloadCount(id: string): Promise<void> {
 		[id],
 	);
 }
+
+/**
+ * Finds all transfers that have passed their expiration date.
+ */
+export async function getExpiredTransfers(): Promise<Transfer[]> {
+	const query = "SELECT * FROM transfers WHERE expires_at < NOW()";
+	const result = await pool.query<Transfer>(query);
+	return result.rows;
+}
+
+/**
+ * Permanently removes a transfer from the database.
+ */
+export async function deleteTransfer(id: string): Promise<void> {
+	await pool.query("DELETE FROM transfers WHERE id = $1", [id]);
+}
