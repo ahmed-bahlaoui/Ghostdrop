@@ -1,3 +1,4 @@
+import "./config/env.ts";
 import Fastify from "fastify";
 import multipart from "@fastify/multipart";
 import rateLimit from "@fastify/rate-limit";
@@ -15,19 +16,18 @@ import { startCleanupWorker } from "./services/cleanup.ts";
 
 const fastify = Fastify({
 	logger: true,
+	trustProxy: true, // Crucial for reading IP from Caddy/X-Forwarded-For
 });
 
 // Register Rate Limiting (using Redis)
-fastify.register(rateLimit, {
+// We must AWAIT registration so that the onRoute hooks are ready for the routes below
+await fastify.register(rateLimit, {
 	global: true,
-	max: 100, // 100 requests per minute
+	max: 100, // Default: 100 requests per minute
 	timeWindow: "1 minute",
 	redis,
 	keyGenerator: (request) => {
-		// Trust the IP from Caddy (X-Forwarded-For)
-		return (
-			(request.headers["x-forwarded-for"] as string) || request.ip || "unknown"
-		);
+		return request.ip || "unknown";
 	},
 });
 
@@ -77,78 +77,90 @@ fastify.post(
 	async (request, reply) => {
 		const parseResult = CreateTransferSchema.safeParse(request.body);
 
-	if (!parseResult.success) {
-		return reply.status(400).send({
-			error: "Invalid input",
-			details: parseResult.error.format(),
-		});
-	}
+		if (!parseResult.success) {
+			return reply.status(400).send({
+				error: "Invalid input",
+				details: parseResult.error.format(),
+			});
+		}
 
-	const { filename, size, mimeType, maxDownloads, expiresInMinutes } =
-		parseResult.data;
+		const { filename, size, mimeType, maxDownloads, expiresInMinutes } =
+			parseResult.data;
 
-	const code = generateTransferCode();
-	const objectKey = generateObjectKey(filename);
-	const expiresAt = new Date();
-	expiresAt.setMinutes(expiresAt.getMinutes() + expiresInMinutes);
+		const code = generateTransferCode();
+		const objectKey = generateObjectKey(filename);
+		const expiresAt = new Date();
+		expiresAt.setMinutes(expiresAt.getMinutes() + expiresInMinutes);
 
-	try {
-		const transfer = await createTransfer({
-			code,
-			object_key: objectKey,
-			original_filename: filename,
-			mime_type: mimeType,
-			size_bytes: size,
-			max_downloads: maxDownloads,
-			expires_at: expiresAt,
-		});
+		try {
+			const transfer = await createTransfer({
+				code,
+				object_key: objectKey,
+				original_filename: filename,
+				mime_type: mimeType,
+				size_bytes: size,
+				max_downloads: maxDownloads,
+				expires_at: expiresAt,
+			});
 
-		await redis.set(
-			`transfer:code:${code}`,
-			transfer.id,
-			"EX",
-			expiresInMinutes * 60,
-		);
+			await redis.set(
+				`transfer:code:${code}`,
+				transfer.id,
+				"EX",
+				expiresInMinutes * 60,
+			);
 
-		return {
-			code: transfer.code,
-			objectKey: transfer.object_key,
-			expiresAt: transfer.expires_at,
-		};
-	} catch (err) {
-		fastify.log.error(err);
-		return reply
-			.status(500)
-			.send({ error: "Failed to create transfer session" });
-	}
-});
+			return {
+				code: transfer.code,
+				objectKey: transfer.object_key,
+				expiresAt: transfer.expires_at,
+			};
+		} catch (err) {
+			fastify.log.error(err);
+			return reply
+				.status(500)
+				.send({ error: "Failed to create transfer session" });
+		}
+	},
+);
 
 /**
  * Metadata retrieval
  */
-fastify.get("/transfers/:code", async (request, reply) => {
-	const { code } = request.params as { code: string };
-	const upperCode = code.toUpperCase();
+fastify.get(
+	"/transfers/:code",
+	{
+		config: {
+			rateLimit: {
+				max: 10,
+				timeWindow: "1 minute",
+			},
+		},
+	},
+	async (request, reply) => {
+		const { code } = request.params as { code: string };
+		const upperCode = code.toUpperCase();
 
-	const transferId = await redis.get(`transfer:code:${upperCode}`);
-	if (!transferId) {
-		return reply.status(404).send({ error: "Transfer not found or expired" });
-	}
+		const transferId = await redis.get(`transfer:code:${upperCode}`);
+		if (!transferId) {
+			return reply.status(404).send({ error: "Transfer not found or expired" });
+		}
 
-	const transfer = await getTransferByCode(upperCode);
-	if (!transfer) {
-		return reply.status(404).send({ error: "Transfer metadata missing" });
-	}
+		const transfer = await getTransferByCode(upperCode);
+		if (!transfer) {
+			return reply.status(404).send({ error: "Transfer metadata missing" });
+		}
 
-	return {
-		filename: transfer.original_filename,
-		size: Number(transfer.size_bytes),
-		mimeType: transfer.mime_type,
-		expiresAt: transfer.expires_at,
-		downloadCount: transfer.download_count,
-		maxDownloads: transfer.max_downloads,
-	};
-});
+		return {
+			filename: transfer.original_filename,
+			size: Number(transfer.size_bytes),
+			mimeType: transfer.mime_type,
+			expiresAt: transfer.expires_at,
+			downloadCount: transfer.download_count,
+			maxDownloads: transfer.max_downloads,
+		};
+	},
+);
 
 /**
  * Binary Upload Pipeline (Stream to MinIO)
@@ -247,13 +259,19 @@ fastify.get("/transfers/:code/download", async (request, reply) => {
  */
 const start = async () => {
 	try {
+		console.log("--> Testing redis connection...");
+		await redis.ping();
+		console.log("--> Redis connection successful!");
+
+		console.log("--> Initializing MinIO Storage...");
 		await initializeStorage();
 
 		// Start the background cleanup worker (runs every 5 minutes by default)
+		console.log("--> Starting Cleanup Worker...");
 		startCleanupWorker();
 
-		await fastify.listen({ port: 3001, host: "0.0.0.0" });
-		console.log("Server listening on http://localhost:3001");
+		await fastify.listen({ port: 3100, host: "0.0.0.0" });
+		console.log("--> Server listening on http://localhost:3100");
 	} catch (err) {
 		fastify.log.error(err);
 		process.exit(1);
