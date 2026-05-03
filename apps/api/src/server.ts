@@ -15,7 +15,15 @@ import redis from "./services/redis.ts";
 import { startCleanupWorker } from "./services/cleanup.ts";
 
 const fastify = Fastify({
-	logger: true,
+	logger: {
+		transport: {
+			target: "pino-pretty",
+			options: {
+				translateTime: "HH:MM:ss Z",
+				ignore: "pid,hostname",
+			},
+		},
+	},
 	trustProxy: true, // Crucial for reading IP from Caddy/X-Forwarded-For
 });
 
