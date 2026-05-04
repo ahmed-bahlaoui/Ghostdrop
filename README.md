@@ -7,6 +7,7 @@ ghostdrop
 │  │  ├─ package.json
 │  │  ├─ src
 │  │  │  ├─ config
+│  │  │  │  └─ env.ts
 │  │  │  ├─ db
 │  │  │  │  ├─ migrate.ts
 │  │  │  │  └─ migrations
@@ -24,26 +25,28 @@ ghostdrop
 │  │  │     └─ generate_session_transfer_code.ts
 │  │  └─ tsconfig.json
 │  └─ web
-│     ├─ app
-│     │  ├─ favicon.ico
-│     │  ├─ globals.css
-│     │  ├─ layout.tsx
-│     │  └─ page.tsx
-│     ├─ CLAUDE.md
-│     ├─ eslint.config.mjs
-│     ├─ next-env.d.ts
-│     ├─ next.config.ts
+│     ├─ index.html
 │     ├─ package.json
-│     ├─ pnpm-lock.yaml
-│     ├─ postcss.config.mjs
 │     ├─ public
-│     │  ├─ file.svg
-│     │  ├─ globe.svg
-│     │  ├─ next.svg
-│     │  ├─ vercel.svg
-│     │  └─ window.svg
+│     │  ├─ favicon.svg
+│     │  └─ icons.svg
 │     ├─ README.md
-│     └─ tsconfig.json
+│     ├─ src
+│     │  ├─ app.css
+│     │  ├─ App.svelte
+│     │  ├─ assets
+│     │  │  ├─ hero.png
+│     │  │  ├─ svelte.svg
+│     │  │  └─ vite.svg
+│     │  ├─ lib
+│     │  │  └─ Counter.svelte
+│     │  └─ main.ts
+│     ├─ svelte.config.js
+│     ├─ tsconfig.app.json
+│     ├─ tsconfig.json
+│     ├─ tsconfig.node.json
+│     └─ vite.config.ts
+├─ caddyFile
 ├─ compose.yaml
 ├─ package.json
 ├─ packages

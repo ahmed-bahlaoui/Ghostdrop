@@ -9,14 +9,25 @@
 
 	let fileInput: HTMLInputElement;
 
+	// --- CONFIGURATION ---
+	const API_OVERRIDE = ""; 
+
 	const getApiUrl = () => {
-		if (typeof window !== "undefined") {
-			return `http://${window.location.hostname}:3100`;
-		}
-		return "http://localhost:3100";
+		if (typeof window === "undefined") return "http://localhost:3100";
+		const params = new URLSearchParams(window.location.search);
+		const paramApi = params.get("api");
+		if (paramApi) return paramApi;
+		if (API_OVERRIDE) return API_OVERRIDE;
+		return `http://${window.location.hostname}:3100`;
 	};
 
 	const API_URL = getApiUrl();
+	
+	// Localtunnel/Ngrok bypass header
+	const headers = {
+		"Bypass-Tunnel-Reminder": "true"
+	};
+	// ---------------------
 
 	function handleFileSelect(e: Event) {
 		const target = e.target as HTMLInputElement;
@@ -36,7 +47,10 @@
 			// 1. Handshake
 			const handshakeRes = await fetch(`${API_URL}/transfers`, {
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
+				headers: { 
+					...headers,
+					"Content-Type": "application/json" 
+				},
 				body: JSON.stringify({
 					filename: selectedFile.name,
 					size: selectedFile.size,
@@ -58,6 +72,7 @@
 
 			const uploadRes = await fetch(`${API_URL}/transfers/${code}/upload`, {
 				method: "POST",
+				headers: headers, // Bypass tunnel reminder for upload too
 				body: formData,
 			});
 
@@ -86,7 +101,9 @@
 		try {
 			const cleanCode = receiveCode.trim().toUpperCase();
 			// 1. Peek Metadata
-			const metaRes = await fetch(`${API_URL}/transfers/${cleanCode}`);
+			const metaRes = await fetch(`${API_URL}/transfers/${cleanCode}`, {
+				headers: headers
+			});
 			if (!metaRes.ok) {
 				const err = await metaRes.json();
 				throw new Error(err.error || "File not found");
@@ -132,7 +149,14 @@
 	</header>
 
 	<main class="flex-1 flex flex-col items-center justify-start p-4 md:p-12 overflow-y-auto">
-		<div class="flex flex-col gap-6 w-full max-w-100">
+		<div class="flex flex-col gap-6 w-full max-w-[400px]">
+			
+			<!-- Connection Badge -->
+			<div class="flex justify-between items-center px-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
+				<span>API CONNECTION</span>
+				<span class="text-rose-500">{API_URL.replace('http://', '').replace('https://', '')}</span>
+			</div>
+
 			<!-- Status Message -->
 			{#if status.type !== "idle"}
 				<div class="p-4 rounded-2xl flex flex-col gap-2 transition-all border {

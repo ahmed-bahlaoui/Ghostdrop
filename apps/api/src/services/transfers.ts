@@ -1,3 +1,4 @@
+import test from "node:test";
 import pool from "./pool.ts";
 
 export interface Transfer {
@@ -23,6 +24,14 @@ export interface CreateTransferInput {
 	expires_at: Date;
 }
 
+export async function testPostgres(): Promise<void> {
+	try {
+		await pool.query("SELECT NOW();");
+	} catch (err) {
+		console.error("Database connection test failed:", err);
+		throw err;
+	}
+}
 /**
  * Creates a new transfer record in the database.
  */

@@ -10,6 +10,7 @@ import {
 	createTransfer,
 	getTransferByCode,
 	incrementDownloadCount,
+	testPostgres,
 } from "./services/transfers.ts";
 import redis from "./services/redis.ts";
 import { startCleanupWorker } from "./services/cleanup.ts";
@@ -68,7 +69,10 @@ fastify.get("/", async () => {
 fastify.get("/health", async () => {
 	try {
 		await redis.ping();
-		return { status: "ok", redis: "up" };
+		await testPostgres();
+		await initializeStorage();
+
+		return { status: "ok", redis: "up", postgres: "up", minIO: "up" };
 	} catch (err) {
 		console.log("Redis health check failed:", err);
 		return { status: "error", redis: "down" };
@@ -276,6 +280,10 @@ const start = async () => {
 		console.log("--> Testing redis connection...");
 		await redis.ping();
 		console.log("--> Redis connection successful!");
+
+		console.log("--> Testing PostgreSQL connection...");
+		await testPostgres();
+		console.log("--> PostgreSQL connection successful!");
 
 		console.log("--> Initializing MinIO Storage...");
 		await initializeStorage();
