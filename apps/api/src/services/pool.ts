@@ -1,3 +1,4 @@
+import "../config/env.ts";
 import { Pool } from "pg";
 
 function requireEnv(name: string) {

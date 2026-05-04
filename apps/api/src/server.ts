@@ -1,7 +1,7 @@
-import "./config/env.ts";
 import Fastify from "fastify";
 import multipart from "@fastify/multipart";
 import rateLimit from "@fastify/rate-limit";
+import cors from "@fastify/cors";
 import { z } from "zod";
 import minio, { BUCKET_NAME, initializeStorage } from "./services/storage.ts";
 import { generateTransferCode } from "./utils/generate_session_transfer_code.ts";
@@ -13,6 +13,7 @@ import {
 } from "./services/transfers.ts";
 import redis from "./services/redis.ts";
 import { startCleanupWorker } from "./services/cleanup.ts";
+import "./config/env.ts";
 
 const fastify = Fastify({
 	logger: {
@@ -27,8 +28,13 @@ const fastify = Fastify({
 	trustProxy: true, // Crucial for reading IP from Caddy/X-Forwarded-For
 });
 
+// Register CORS
+await fastify.register(cors, {
+	origin: true,
+	methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+});
+
 // Register Rate Limiting (using Redis)
-// We must AWAIT registration so that the onRoute hooks are ready for the routes below
 await fastify.register(rateLimit, {
 	global: true,
 	max: 100, // Default: 100 requests per minute
