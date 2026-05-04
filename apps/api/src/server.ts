@@ -3,29 +3,33 @@ import multipart from "@fastify/multipart";
 import rateLimit from "@fastify/rate-limit";
 import cors from "@fastify/cors";
 import { z } from "zod";
-import minio, { BUCKET_NAME, initializeStorage } from "./services/storage.ts";
-import { generateTransferCode } from "./utils/generate_session_transfer_code.ts";
-import { generateObjectKey } from "./utils/generate_minio_object_key.ts";
+import minio, { BUCKET_NAME, initializeStorage } from "./services/storage.js";
+import { generateTransferCode } from "./utils/generate_session_transfer_code.js";
+import { generateObjectKey } from "./utils/generate_minio_object_key.js";
 import {
 	createTransfer,
 	getTransferByCode,
 	incrementDownloadCount,
 	testPostgres,
-} from "./services/transfers.ts";
-import redis from "./services/redis.ts";
-import { startCleanupWorker } from "./services/cleanup.ts";
-import "./config/env.ts";
+} from "./services/transfers.js";
+import redis from "./services/redis.js";
+import { startCleanupWorker } from "./services/cleanup.js";
+import "./config/env.js";
+
+const isProd = process.env.NODE_ENV === "production";
 
 const fastify = Fastify({
-	logger: {
-		transport: {
-			target: "pino-pretty",
-			options: {
-				translateTime: "HH:MM:ss Z",
-				ignore: "pid,hostname",
+	logger: isProd
+		? true
+		: {
+				transport: {
+					target: "pino-pretty",
+					options: {
+						translateTime: "HH:MM:ss Z",
+						ignore: "pid,hostname",
+					},
+				},
 			},
-		},
-	},
 	trustProxy: true, // Crucial for reading IP from Caddy/X-Forwarded-For
 });
 
@@ -292,8 +296,9 @@ const start = async () => {
 		console.log("--> Starting Cleanup Worker...");
 		startCleanupWorker();
 
-		await fastify.listen({ port: 3100, host: "0.0.0.0" });
-		console.log("--> Server listening on http://localhost:3100");
+		const port = process.env.PORT ? Number(process.env.PORT) : 3100;
+		await fastify.listen({ port, host: "0.0.0.0" });
+		console.log(`--> Server listening on http://localhost:${port}`);
 	} catch (err) {
 		fastify.log.error(err);
 		process.exit(1);

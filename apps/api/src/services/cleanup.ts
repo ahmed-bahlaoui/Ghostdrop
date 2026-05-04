@@ -1,5 +1,5 @@
-import { deleteObject } from "./storage.ts";
-import { getExpiredTransfers, deleteTransfer } from "./transfers.ts";
+import { deleteObject } from "./storage.js";
+import { getExpiredTransfers, deleteTransfer } from "./transfers.js";
 
 /**
  * The Cleanup Worker:

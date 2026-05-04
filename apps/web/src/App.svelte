@@ -14,10 +14,18 @@
 
 	const getApiUrl = () => {
 		if (typeof window === "undefined") return "http://localhost:3100";
+		
 		const params = new URLSearchParams(window.location.search);
 		const paramApi = params.get("api");
 		if (paramApi) return paramApi;
 		if (API_OVERRIDE) return API_OVERRIDE;
+
+		// If we are in production (staging), use the relative /api path
+		// provided by the Caddy proxy
+		if (import.meta.env.PROD) {
+			return "/api";
+		}
+
 		return `http://${window.location.hostname}:3100`;
 	};
 
@@ -59,11 +67,19 @@
 			});
 
 			if (!handshakeRes.ok) {
-				const err = await handshakeRes.json();
-				throw new Error(err.error || "Handshake failed");
+				const text = await handshakeRes.text();
+				let errorMessage = "Handshake failed";
+				try {
+					const err = JSON.parse(text);
+					errorMessage = err.error || errorMessage;
+				} catch (e) {
+					errorMessage = `Server Error: ${handshakeRes.status} ${handshakeRes.statusText}`;
+				}
+				throw new Error(errorMessage);
 			}
 
-			const { code } = await handshakeRes.json();
+			const data = await handshakeRes.json();
+			const { code } = data;
 			status = { type: "loading", message: `Uploading ${selectedFile.name}...` };
 
 			// 2. Binary Stream

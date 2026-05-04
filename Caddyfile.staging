@@ -1,0 +1,46 @@
+{
+    email info@ghostdrop.app
+    local_certs
+}
+
+# 1. THE HTTPS BLOCK (Port 443)
+# Keeps things secure for your PC and Tunnels
+localhost:443, 127.0.0.1:443, 10.0.0.56:443 {
+    tls internal
+
+    handle_path /api* {
+        reverse_proxy api:3100
+    }
+
+    handle {
+        root * /srv
+        file_server
+        encode zstd gzip
+        try_files {path} /index.html
+        header {
+            X-Frame-Options "DENY"
+            X-Content-Type-Options "nosniff"
+        }
+    }
+}
+
+# 2. THE HTTP BLOCK (Port 80)
+# This allows your tablet to connect without being forced into HTTPS
+http://localhost, http://127.0.0.1, http://10.0.0.56 {
+    # NO 'tls internal' here, so NO redirect happens
+    
+    handle_path /api* {
+        reverse_proxy api:3100
+    }
+
+    handle {
+        root * /srv
+        file_server
+        encode zstd gzip
+        try_files {path} /index.html
+        header {
+            X-Frame-Options "DENY"
+            X-Content-Type-Options "nosniff"
+        }
+    }
+}

@@ -1,0 +1,92 @@
+services:
+    postgres:
+        image: postgres:16-alpine
+        environment:
+            POSTGRES_USER: user
+            POSTGRES_PASSWORD: password
+            POSTGRES_DB: mydb
+        ports:
+            - "5433:5432"
+        volumes:
+            - staging_postgres_data:/var/lib/postgresql/data
+        networks:
+            - ghostdrop
+
+    redis:
+        image: redis:7-alpine
+        ports:
+            - "6380:6379"
+        volumes:
+            - staging_redis_data:/data
+        networks:
+            - ghostdrop
+
+    minio:
+        image: minio/minio:latest
+        environment:
+            MINIO_ROOT_USER: minioadmin
+            MINIO_ROOT_PASSWORD: minioadmin
+        command: server /data --console-address ":9001"
+        ports:
+            - "9000:9000"
+            - "9001:9001"
+        volumes:
+            - staging_minio_data:/data
+        networks:
+            - ghostdrop
+
+    api:
+        build:
+            context: .
+            dockerfile: apps/api/Dockerfile
+        environment:
+            PORT: 3100
+            # Database
+            POSTGRES_HOST: postgres
+            POSTGRES_PORT: 5432
+            POSTGRES_USER: user
+            POSTGRES_PASSWORD: password
+            POSTGRES_DB: mydb
+            # Redis
+            REDIS_HOST: redis
+            REDIS_PORT: 6379
+            # MinIO
+            MINIO_ENDPOINT: minio
+            MINIO_PORT: 9000
+            MINIO_ACCESS_KEY: minioadmin
+            MINIO_SECRET_KEY: minioadmin
+            MINIO_USE_SSL: "false"
+            MINIO_BUCKET: ghostdrop
+            NODE_ENV: production
+        depends_on:
+            - postgres
+            - redis
+            - minio
+        networks:
+            - ghostdrop
+
+    gateway:
+        build:
+            context: .
+            dockerfile: Caddy.Dockerfile.staging
+        ports:
+            - "80:80"
+            - "443:443"
+            - "443:443/udp"
+        volumes:
+            - staging_caddy_data:/data
+            - staging_caddy_config:/config
+        depends_on:
+            - api
+        networks:
+            - ghostdrop
+
+networks:
+    ghostdrop:
+
+volumes:
+    staging_postgres_data:
+    staging_redis_data:
+    staging_minio_data:
+    staging_caddy_data:
+    staging_caddy_config:

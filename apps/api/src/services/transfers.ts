@@ -1,5 +1,5 @@
 import test from "node:test";
-import pool from "./pool.ts";
+import pool from "./pool.js";
 
 export interface Transfer {
 	id: string;
