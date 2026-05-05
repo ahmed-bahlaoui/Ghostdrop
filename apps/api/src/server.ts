@@ -172,14 +172,13 @@ fastify.get(
 		if (!transfer) {
 			return reply.status(404).send({ error: "Transfer metadata missing" });
 		}
-		await incrementDownloadCount(transfer.id); // Increment download count on metadata peek
 
 		return {
 			filename: transfer.original_filename,
 			size: Number(transfer.size_bytes),
 			mimeType: transfer.mime_type,
 			expiresAt: transfer.expires_at,
-			downloadCount: transfer.download_count + 1,
+			downloadCount: transfer.download_count,
 			maxDownloads: transfer.max_downloads,
 		};
 	},
@@ -268,9 +267,8 @@ fastify.get("/transfers/:code/download", async (request, reply) => {
 			`attachment; filename="${transfer.original_filename}"`,
 		);
 
-		// 5. Pipe to client 
-		// incrementing in peek rather than download endpoint to ensure we count all download attempts, even if the client disconnects early.
-		// await incrementDownloadCount(transfer.id);
+		// 5. Pipe to client
+		await incrementDownloadCount(transfer.id);
 		return reply.send(stream);
 	} catch (err) {
 		fastify.log.error(err);
