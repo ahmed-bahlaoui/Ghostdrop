@@ -2,6 +2,9 @@
     email info@ghostdrop.app
     local_certs
     auto_https disable_redirects
+    servers {
+        protocols h1 h2 h3
+    }
 }
 
 # 1. THE HTTPS BLOCK (Port 443)

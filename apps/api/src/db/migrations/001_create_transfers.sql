@@ -17,12 +17,12 @@ CREATE TABLE IF NOT EXISTS transfers (
 
 -- Testing what is already in our db:
 SELECT
-    mime_type,
     original_filename,
     mime_type,
     code,
     expires_at,
-    download_count
+    download_count,
+    max_downloads
 FROM transfers
 ORDER BY created_at DESC;
 

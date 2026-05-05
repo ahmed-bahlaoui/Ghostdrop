@@ -1,13 +1,17 @@
 <script lang="ts">
 	let selectedFile = $state<File | null>(null);
 	let receiveCode = $state("");
+	let peekedCode = $state("");
 	let expiresInMinutes = $state(60);
 	let maxDownloads = $state(1);
+	let view = $state<"main" | "peek">("main");
 	let fileMeta = $state<{
 		filename: string;
 		size: number;
+		mimeType: string;
 		downloadCount: number;
 		maxDownloads: number;
+		expiresAt: string;
 	} | null>(null);
 	let status = $state<{
 		type: "idle" | "loading" | "success" | "error";
@@ -142,15 +146,14 @@
 		}
 	}
 
-	async function handleDownload() {
+	async function handlePeek() {
 		if (!receiveCode) return;
 
-		status = { type: "loading", message: "Locating file..." };
+		status = { type: "loading", message: "Fetching metadata..." };
 		fileMeta = null;
 
 		try {
 			const cleanCode = receiveCode.trim().toUpperCase();
-			// 1. Peek Metadata
 			const metaRes = await fetch(`${API_URL}/transfers/${cleanCode}`, {
 				headers: headers,
 			});
@@ -163,25 +166,75 @@
 			fileMeta = {
 				filename: meta.filename,
 				size: meta.size,
+				mimeType: meta.mimeType,
 				downloadCount: meta.downloadCount,
 				maxDownloads: meta.maxDownloads,
+				expiresAt: meta.expiresAt,
 			};
+			peekedCode = cleanCode;
+			status = { type: "idle", message: "" };
+			view = "peek";
+		} catch (err: unknown) {
+			console.error("Peek error:", err);
+			status = {
+				type: "error",
+				message: err instanceof Error ? err.message : "Peek failed",
+			};
+		}
+	}
 
-			status = { type: "success", message: "Download starting..." };
+	async function handleDownload() {
+		if (!receiveCode) return;
 
-			// 2. Trigger Binary Stream Download
+		status = { type: "loading", message: "Download starting..." };
+
+		try {
+			const cleanCode = receiveCode.trim().toUpperCase();
 			window.location.assign(
 				`${API_URL}/transfers/${cleanCode}/download`,
 			);
-
 			receiveCode = "";
 		} catch (err: unknown) {
 			console.error("Download error:", err);
 			status = {
 				type: "error",
-				message: err instanceof Error ? err.message : "Download failed",
+				message:
+					err instanceof Error ? err.message : "Download failed",
 			};
 		}
+	}
+
+	async function handleDownloadFromPeek() {
+		status = { type: "loading", message: "Download starting..." };
+		window.location.assign(
+			`${API_URL}/transfers/${peekedCode}/download`,
+		);
+		receiveCode = "";
+		view = "main";
+	}
+
+	function goBack() {
+		view = "main";
+		fileMeta = null;
+		status = { type: "idle", message: "" };
+	}
+
+	function formatSize(bytes: number): string {
+		if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
+		if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
+		if (bytes >= 1_000) return `${Math.round(bytes / 1_000)} KB`;
+		return `${bytes} B`;
+	}
+
+	function formatExpiry(iso: string): string {
+		const diff = new Date(iso).getTime() - Date.now();
+		if (diff <= 0) return "Expired";
+		const mins = Math.round(diff / 60_000);
+		if (mins < 60) return `in ${mins} min`;
+		const hours = Math.round(mins / 60);
+		if (hours < 24) return `in ${hours}h`;
+		const days = Math.round(hours / 24);
+		return `in ${days} day${days > 1 ? "s" : ""}`;
 	}
 </script>
 
@@ -236,29 +289,6 @@
 					<p class="font-bold uppercase text-xs tracking-widest">
 						{status.message}
 					</p>
-					{#if fileMeta}
-						<div
-							class="mt-2 p-4 bg-white rounded-xl border border-slate-200 text-center shadow-sm"
-						>
-							<p
-								class="text-xs font-black text-slate-400 uppercase mb-1"
-							>
-								{fileMeta.filename}
-							</p>
-							<p class="text-sm text-slate-600">
-								This file has been downloaded <span
-									class="font-black text-slate-900"
-									>{fileMeta.downloadCount}</span
-								>
-								time{fileMeta.downloadCount !== 1 ? "s" : ""}
-								{#if fileMeta.maxDownloads}
-									<span class="text-slate-400">
-										/ {fileMeta.maxDownloads} allowed</span
-									>
-								{/if}
-							</p>
-						</div>
-					{/if}
 					{#if status.code}
 						<div
 							class="mt-2 p-4 bg-white rounded-xl border border-emerald-200 text-center shadow-sm"
@@ -278,7 +308,8 @@
 				</div>
 			{/if}
 
-			<div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+			{#if view === "main"}
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
 				<!-- Send Card -->
 				<div
 					class="bg-white rounded-2xl shadow-xl p-6 md:p-8 transition-all active:scale-[0.99]"
@@ -419,21 +450,120 @@
 							type="text"
 							bind:value={receiveCode}
 							onkeydown={(e) =>
-								e.key === "Enter" && handleDownload()}
+								e.key === "Enter" && handlePeek()}
 							placeholder="ENTER 6-DIGIT CODE"
 							class="w-full bg-slate-100 py-5 px-4 rounded-2xl outline-none focus:ring-4 focus:ring-rose-100 text-2xl font-mono font-black text-center placeholder:text-slate-300 uppercase tracking-widest transition-all"
 						/>
-						<button
-							onclick={handleDownload}
-							disabled={!receiveCode.trim() ||
-								status.type === "loading"}
-							class="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-xl disabled:opacity-20 active:bg-black transition-all uppercase tracking-tighter"
-						>
-							Download
-						</button>
+						<div class="flex gap-3">
+							<button
+								onclick={handlePeek}
+								disabled={!receiveCode.trim() ||
+									status.type === "loading"}
+								class="flex-1 py-5 bg-emerald-500 text-white rounded-2xl font-black text-lg hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-200 active:bg-emerald-700 uppercase tracking-tighter"
+							>
+								Peek
+							</button>
+							<button
+								onclick={handleDownload}
+								disabled={!receiveCode.trim() ||
+									status.type === "loading"}
+								class="flex-1 py-5 bg-rose-500 text-white rounded-2xl font-black text-lg hover:bg-rose-600 transition-all shadow-lg shadow-rose-200 active:bg-rose-700 uppercase tracking-tighter"
+							>
+								Download
+							</button>
+						</div>
 					</div>
 				</div>
 			</div>
+		{:else if view === "peek" && fileMeta}
+			<div
+				class="bg-white rounded-2xl shadow-xl p-6 md:p-8 w-full max-w-lg mx-auto"
+			>
+				<h2
+					class="text-xl font-black mb-6 text-slate-800 uppercase tracking-tighter"
+				>
+					File Details
+				</h2>
+
+				<div class="space-y-4">
+					<div>
+						<p class="text-xs font-black uppercase text-slate-400"
+						>
+							Filename
+						</p>
+						<p
+							class="text-lg font-bold text-slate-800 break-all"
+						>
+							{fileMeta.filename}
+						</p>
+					</div>
+
+					<div class="flex gap-6">
+						<div>
+							<p
+								class="text-xs font-black uppercase text-slate-400"
+							>
+								Type
+							</p>
+							<p class="font-bold text-slate-800">
+								{fileMeta.mimeType}
+							</p>
+						</div>
+						<div>
+							<p
+								class="text-xs font-black uppercase text-slate-400"
+							>
+								Size
+							</p>
+							<p class="font-bold text-slate-800">
+								{formatSize(fileMeta.size)}
+							</p>
+						</div>
+					</div>
+
+					<div class="flex gap-6">
+						<div>
+							<p
+								class="text-xs font-black uppercase text-slate-400"
+							>
+								Downloads
+							</p>
+							<p
+								class="font-bold text-slate-800"
+								class:text-rose-500={fileMeta.downloadCount >=
+									fileMeta.maxDownloads}
+							>
+								{fileMeta.downloadCount} / {fileMeta.maxDownloads}
+							</p>
+						</div>
+						<div>
+							<p
+								class="text-xs font-black uppercase text-slate-400"
+							>
+								Expires
+							</p>
+							<p class="font-bold text-slate-800">
+								{formatExpiry(fileMeta.expiresAt)}
+							</p>
+						</div>
+					</div>
+				</div>
+
+				<button
+					onclick={handleDownloadFromPeek}
+					disabled={status.type === "loading"}
+					class="mt-8 w-full py-5 bg-rose-500 text-white rounded-2xl font-black text-xl hover:bg-rose-600 transition-all shadow-lg shadow-rose-200 active:bg-rose-700 uppercase tracking-tighter"
+				>
+					Download
+				</button>
+				<button
+					onclick={goBack}
+					class="mt-3 w-full py-3 bg-slate-100 text-slate-600 rounded-2xl font-bold uppercase hover:bg-slate-200 transition-all tracking-tighter"
+				>
+					Back to code
+				</button>
+			</div>
+		{/if}
 		</div>
 	</main>
 
