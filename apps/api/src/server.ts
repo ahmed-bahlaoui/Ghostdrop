@@ -1,19 +1,19 @@
-import Fastify from "fastify";
+import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
 import rateLimit from "@fastify/rate-limit";
-import cors from "@fastify/cors";
+import Fastify from "fastify";
 import { z } from "zod";
+import { startCleanupWorker } from "./services/cleanup.js";
+import redis from "./services/redis.js";
 import minio, { BUCKET_NAME, initializeStorage } from "./services/storage.js";
-import { generateTransferCode } from "./utils/generate_session_transfer_code.js";
-import { generateObjectKey } from "./utils/generate_minio_object_key.js";
 import {
 	createTransfer,
 	getTransferByCode,
 	incrementDownloadCount,
 	testPostgres,
 } from "./services/transfers.js";
-import redis from "./services/redis.js";
-import { startCleanupWorker } from "./services/cleanup.js";
+import { generateObjectKey } from "./utils/generate_minio_object_key.js";
+import { generateTransferCode } from "./utils/generate_session_transfer_code.js";
 import "./config/env.js";
 
 const isProd = process.env.NODE_ENV === "production";
@@ -163,7 +163,7 @@ fastify.get(
 		const { code } = request.params as { code: string };
 		const upperCode = code.toUpperCase();
 
-		const transferId = await redis.get(`transfer:code:${upperCode}`);
+		const transferId: string | null = await redis.get(`transfer:code:${upperCode}`);
 		if (!transferId) {
 			return reply.status(404).send({ error: "Transfer not found or expired" });
 		}
@@ -172,13 +172,14 @@ fastify.get(
 		if (!transfer) {
 			return reply.status(404).send({ error: "Transfer metadata missing" });
 		}
+		await incrementDownloadCount(transfer.id); // Increment download count on metadata peek
 
 		return {
 			filename: transfer.original_filename,
 			size: Number(transfer.size_bytes),
 			mimeType: transfer.mime_type,
 			expiresAt: transfer.expires_at,
-			downloadCount: transfer.download_count,
+			downloadCount: transfer.download_count + 1,
 			maxDownloads: transfer.max_downloads,
 		};
 	},
@@ -267,8 +268,9 @@ fastify.get("/transfers/:code/download", async (request, reply) => {
 			`attachment; filename="${transfer.original_filename}"`,
 		);
 
-		// 5. Pipe to client
-		await incrementDownloadCount(transfer.id);
+		// 5. Pipe to client 
+		// incrementing in peek rather than download endpoint to ensure we count all download attempts, even if the client disconnects early.
+		// await incrementDownloadCount(transfer.id);
 		return reply.send(stream);
 	} catch (err) {
 		fastify.log.error(err);

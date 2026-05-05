@@ -3,6 +3,12 @@
 	let receiveCode = $state("");
 	let expiresInMinutes = $state(60);
 	let maxDownloads = $state(1);
+	let fileMeta = $state<{
+		filename: string;
+		size: number;
+		downloadCount: number;
+		maxDownloads: number;
+	} | null>(null);
 	let status = $state<{
 		type: "idle" | "loading" | "success" | "error";
 		message: string;
@@ -90,7 +96,7 @@
 				try {
 					const err = JSON.parse(text);
 					errorMessage = err.error || errorMessage;
-				} catch (e) {
+				} catch {
 					errorMessage = `Server Error: ${handshakeRes.status} ${handshakeRes.statusText}`;
 				}
 				throw new Error(errorMessage);
@@ -127,9 +133,12 @@
 			};
 			selectedFile = null;
 			if (fileInput) fileInput.value = "";
-		} catch (err: any) {
+		} catch (err: unknown) {
 			console.error("Upload error:", err);
-			status = { type: "error", message: err.message };
+			status = {
+				type: "error",
+				message: err instanceof Error ? err.message : "Upload failed",
+			};
 		}
 	}
 
@@ -137,6 +146,7 @@
 		if (!receiveCode) return;
 
 		status = { type: "loading", message: "Locating file..." };
+		fileMeta = null;
 
 		try {
 			const cleanCode = receiveCode.trim().toUpperCase();
@@ -149,6 +159,14 @@
 				throw new Error(err.error || "File not found");
 			}
 
+			const meta = await metaRes.json();
+			fileMeta = {
+				filename: meta.filename,
+				size: meta.size,
+				downloadCount: meta.downloadCount,
+				maxDownloads: meta.maxDownloads,
+			};
+
 			status = { type: "success", message: "Download starting..." };
 
 			// 2. Trigger Binary Stream Download
@@ -157,9 +175,12 @@
 			);
 
 			receiveCode = "";
-		} catch (err: any) {
+		} catch (err: unknown) {
 			console.error("Download error:", err);
-			status = { type: "error", message: err.message };
+			status = {
+				type: "error",
+				message: err instanceof Error ? err.message : "Download failed",
+			};
 		}
 	}
 </script>
@@ -215,6 +236,29 @@
 					<p class="font-bold uppercase text-xs tracking-widest">
 						{status.message}
 					</p>
+					{#if fileMeta}
+						<div
+							class="mt-2 p-4 bg-white rounded-xl border border-slate-200 text-center shadow-sm"
+						>
+							<p
+								class="text-xs font-black text-slate-400 uppercase mb-1"
+							>
+								{fileMeta.filename}
+							</p>
+							<p class="text-sm text-slate-600">
+								This file has been downloaded <span
+									class="font-black text-slate-900"
+									>{fileMeta.downloadCount}</span
+								>
+								time{fileMeta.downloadCount !== 1 ? "s" : ""}
+								{#if fileMeta.maxDownloads}
+									<span class="text-slate-400">
+										/ {fileMeta.maxDownloads} allowed</span
+									>
+								{/if}
+							</p>
+						</div>
+					{/if}
 					{#if status.code}
 						<div
 							class="mt-2 p-4 bg-white rounded-xl border border-emerald-200 text-center shadow-sm"
@@ -306,12 +350,19 @@
 					{#if selectedFile && status.type !== "loading"}
 						<div class="mt-4 space-y-4">
 							<div>
-								<p class="text-xs font-black uppercase text-slate-400 mb-2">Expires in</p>
+								<p
+									class="text-xs font-black uppercase text-slate-400 mb-2"
+								>
+									Expires in
+								</p>
 								<div class="flex gap-2">
-									{#each expiryOptions as option}
+									{#each expiryOptions as option (option.value)}
 										<button
-											onclick={() => (expiresInMinutes = option.value)}
-											class="flex-1 py-2 rounded-xl text-xs font-bold uppercase transition-all {expiresInMinutes === option.value
+											onclick={() =>
+												(expiresInMinutes =
+													option.value)}
+											class="flex-1 py-2 rounded-xl text-xs font-bold uppercase transition-all {expiresInMinutes ===
+											option.value
 												? 'bg-rose-500 text-white shadow-sm'
 												: 'bg-slate-100 text-slate-500 hover:bg-slate-200'}"
 										>
@@ -322,12 +373,18 @@
 							</div>
 
 							<div>
-								<p class="text-xs font-black uppercase text-slate-400 mb-2">Max Downloads</p>
+								<p
+									class="text-xs font-black uppercase text-slate-400 mb-2"
+								>
+									Max Downloads
+								</p>
 								<div class="flex gap-2">
-									{#each downloadOptions as option}
+									{#each downloadOptions as option (option.value)}
 										<button
-											onclick={() => (maxDownloads = option.value)}
-											class="flex-1 py-2 rounded-xl text-xs font-bold uppercase transition-all {maxDownloads === option.value
+											onclick={() =>
+												(maxDownloads = option.value)}
+											class="flex-1 py-2 rounded-xl text-xs font-bold uppercase transition-all {maxDownloads ===
+											option.value
 												? 'bg-slate-900 text-white shadow-sm'
 												: 'bg-slate-100 text-slate-500 hover:bg-slate-200'}"
 										>

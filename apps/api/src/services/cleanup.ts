@@ -1,6 +1,6 @@
-import { deleteObject } from "./storage.js";
-import { getExpiredTransfers, deleteTransfer } from "./transfers.js";
 import redis from "./redis.js";
+import { deleteObject } from "./storage.js";
+import { deleteTransfer, getExpiredTransfers } from "./transfers.js";
 
 /**
  * The Cleanup Worker:

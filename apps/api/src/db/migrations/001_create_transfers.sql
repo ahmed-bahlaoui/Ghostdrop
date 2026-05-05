@@ -1,4 +1,4 @@
--- Setup Extensions
+-- Active: 1777989199934@@127.0.0.1@5433@mydb
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- Metadata Table for File Transfers
@@ -16,7 +16,15 @@ CREATE TABLE IF NOT EXISTS transfers (
 );
 
 -- Testing what is already in our db:
--- SELECT mime_type, original_filename,  code  FROM transfers ORDER BY created_at DESC;
+SELECT
+    mime_type,
+    original_filename,
+    mime_type,
+    code,
+    expires_at,
+    download_count
+FROM transfers
+ORDER BY created_at DESC;
 
 -- Performance Indexes
 -- Index for finding transfers by their short code (the primary retrieval method)
