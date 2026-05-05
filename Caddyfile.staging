@@ -1,11 +1,12 @@
 {
     email info@ghostdrop.app
     local_certs
+    auto_https disable_redirects
 }
 
 # 1. THE HTTPS BLOCK (Port 443)
-# Keeps things secure for your PC and Tunnels
-localhost:443, 127.0.0.1:443, 10.0.0.56:443 {
+# Keep HTTPS for local desktop loopback testing only.
+localhost:443, 127.0.0.1:443 {
     tls internal
 
     handle_path /api* {
@@ -25,10 +26,8 @@ localhost:443, 127.0.0.1:443, 10.0.0.56:443 {
 }
 
 # 2. THE HTTP BLOCK (Port 80)
-# This allows your tablet to connect without being forced into HTTPS
-http://localhost, http://127.0.0.1, http://10.0.0.56 {
-    # NO 'tls internal' here, so NO redirect happens
-    
+# Serve all LAN host/IP requests over HTTP for mobile testing.
+:80 {
     handle_path /api* {
         reverse_proxy api:3100
     }
