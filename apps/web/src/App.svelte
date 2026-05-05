@@ -1,6 +1,8 @@
 <script lang="ts">
 	let selectedFile = $state<File | null>(null);
 	let receiveCode = $state("");
+	let expiresInMinutes = $state(60);
+	let maxDownloads = $state(1);
 	let status = $state<{
 		type: "idle" | "loading" | "success" | "error";
 		message: string;
@@ -8,6 +10,20 @@
 	}>({ type: "idle", message: "" });
 
 	let fileInput: HTMLInputElement;
+
+	const expiryOptions = [
+		{ label: "1 Hour", value: 60 },
+		{ label: "1 Day", value: 1440 },
+		{ label: "3 Days", value: 4320 },
+		{ label: "7 Days", value: 10080 },
+	];
+
+	const downloadOptions = [
+		{ label: "1", value: 1 },
+		{ label: "3", value: 3 },
+		{ label: "5", value: 5 },
+		{ label: "10", value: 10 },
+	];
 
 	// --- CONFIGURATION ---
 	const API_OVERRIDE = "";
@@ -63,6 +79,8 @@
 					filename: selectedFile.name,
 					size: selectedFile.size,
 					mimeType: selectedFile.type || "application/octet-stream",
+					maxDownloads,
+					expiresInMinutes,
 				}),
 			});
 
@@ -286,12 +304,46 @@
 					</div>
 
 					{#if selectedFile && status.type !== "loading"}
-						<button
-							onclick={handleUpload}
-							class="mt-6 w-full py-5 bg-rose-500 text-white rounded-2xl font-black text-xl hover:bg-rose-600 transition-all shadow-lg shadow-rose-200 active:bg-rose-700 uppercase tracking-tighter"
-						>
-							Send Now
-						</button>
+						<div class="mt-4 space-y-4">
+							<div>
+								<p class="text-xs font-black uppercase text-slate-400 mb-2">Expires in</p>
+								<div class="flex gap-2">
+									{#each expiryOptions as option}
+										<button
+											onclick={() => (expiresInMinutes = option.value)}
+											class="flex-1 py-2 rounded-xl text-xs font-bold uppercase transition-all {expiresInMinutes === option.value
+												? 'bg-rose-500 text-white shadow-sm'
+												: 'bg-slate-100 text-slate-500 hover:bg-slate-200'}"
+										>
+											{option.label}
+										</button>
+									{/each}
+								</div>
+							</div>
+
+							<div>
+								<p class="text-xs font-black uppercase text-slate-400 mb-2">Max Downloads</p>
+								<div class="flex gap-2">
+									{#each downloadOptions as option}
+										<button
+											onclick={() => (maxDownloads = option.value)}
+											class="flex-1 py-2 rounded-xl text-xs font-bold uppercase transition-all {maxDownloads === option.value
+												? 'bg-slate-900 text-white shadow-sm'
+												: 'bg-slate-100 text-slate-500 hover:bg-slate-200'}"
+										>
+											{option.label}
+										</button>
+									{/each}
+								</div>
+							</div>
+
+							<button
+								onclick={handleUpload}
+								class="mt-2 w-full py-5 bg-rose-500 text-white rounded-2xl font-black text-xl hover:bg-rose-600 transition-all shadow-lg shadow-rose-200 active:bg-rose-700 uppercase tracking-tighter"
+							>
+								Send Now
+							</button>
+						</div>
 					{/if}
 				</div>
 
