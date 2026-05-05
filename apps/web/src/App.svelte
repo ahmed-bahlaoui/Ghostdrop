@@ -151,7 +151,7 @@
 >
 	<!-- Navbar -->
 	<header
-		class="flex h-16 w-full items-center justify-between bg-white px-6 md:px-8 shadow-sm shrink-0"
+		class="flex h-16 w-full items-center bg-white px-6 md:px-8 shadow-sm shrink-0"
 	>
 		<div class="flex items-center gap-2">
 			<div
@@ -164,29 +164,6 @@
 			>
 				ghostdrop
 			</span>
-		</div>
-
-		<nav
-			class="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600"
-		>
-			<a href="/" class="text-rose-600 border-b-2 border-rose-600 pb-1"
-				>Transfer</a
-			>
-			<a href="/" class="hover:text-rose-600 transition-colors">Product</a
-			>
-			<a href="/" class="hover:text-rose-600 transition-colors">Pricing</a
-			>
-			<a href="/" class="hover:text-rose-600 transition-colors"
-				>Download</a
-			>
-		</nav>
-
-		<div class="flex items-center gap-4 text-sm font-medium">
-			<button
-				class="flex items-center gap-1 hover:text-rose-600 transition-colors font-bold text-rose-500 uppercase"
-			>
-				Sign in
-			</button>
 		</div>
 	</header>
 

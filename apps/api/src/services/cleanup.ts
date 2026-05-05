@@ -1,5 +1,6 @@
 import { deleteObject } from "./storage.js";
 import { getExpiredTransfers, deleteTransfer } from "./transfers.js";
+import redis from "./redis.js";
 
 /**
  * The Cleanup Worker:
@@ -27,6 +28,9 @@ export async function runCleanup(): Promise<void> {
 
 			// 2. Delete from Database
 			await deleteTransfer(transfer.id);
+
+			// 3. Delete from Redis
+			await redis.del(`transfer:code:${transfer.code}`);
 
 			console.log(`[Cleanup] ✓ Transfer ${transfer.code} fully purged.`);
 		}
