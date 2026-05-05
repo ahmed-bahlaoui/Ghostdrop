@@ -165,7 +165,7 @@
 	</header>
 
 	<main class="flex-1 flex flex-col items-center justify-start p-4 md:p-12 overflow-y-auto">
-		<div class="flex flex-col gap-6 w-full max-w-[400px]">
+		<div class="flex flex-col gap-6 w-full max-w-5xl">
 			
 			<!-- Connection Badge -->
 			<div class="flex justify-between items-center px-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
@@ -190,67 +190,69 @@
 				</div>
 			{/if}
 
-			<!-- Send Card -->
-			<div class="bg-white rounded-2xl shadow-xl p-6 md:p-8 transition-all active:scale-[0.99]">
-				<h2 class="text-xl font-black mb-6 text-slate-800 uppercase tracking-tighter">Send File</h2>
+			<div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+				<!-- Send Card -->
+				<div class="bg-white rounded-2xl shadow-xl p-6 md:p-8 transition-all active:scale-[0.99]">
+					<h2 class="text-xl font-black mb-6 text-slate-800 uppercase tracking-tighter">Send File</h2>
 
-				<div class="relative group overflow-hidden">
-					<input
-						type="file"
-						bind:this={fileInput}
-						onchange={handleFileSelect}
-						class="absolute inset-0 opacity-0 z-20 cursor-pointer"
-					/>
-					<div class="w-full aspect-square rounded-2xl border-4 border-dashed flex flex-col items-center justify-center transition-all {
-						selectedFile ? 'border-emerald-400 bg-emerald-50' : 'border-slate-100 bg-slate-50 group-active:bg-rose-50'
-					}">
-						<div class={selectedFile ? "text-emerald-500" : "text-rose-500"}>
-							{#if selectedFile}
-								<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-									<path d="M20 6L9 17l-5-5"/>
-								</svg>
-							{:else}
-								<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-									<line x1="12" y1="5" x2="12" y2="19" />
-									<line x1="5" y1="12" x2="19" y2="12" />
-								</svg>
-							{/if}
+					<div class="relative group overflow-hidden">
+						<input
+							type="file"
+							bind:this={fileInput}
+							onchange={handleFileSelect}
+							class="absolute inset-0 opacity-0 z-20 cursor-pointer"
+						/>
+						<div class="w-full aspect-square rounded-2xl border-4 border-dashed flex flex-col items-center justify-center transition-all {
+							selectedFile ? 'border-emerald-400 bg-emerald-50' : 'border-slate-100 bg-slate-50 group-active:bg-rose-50'
+						}">
+							<div class={selectedFile ? "text-emerald-500" : "text-rose-500"}>
+								{#if selectedFile}
+									<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+										<path d="M20 6L9 17l-5-5"/>
+									</svg>
+								{:else}
+									<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+										<line x1="12" y1="5" x2="12" y2="19" />
+										<line x1="5" y1="12" x2="19" y2="12" />
+									</svg>
+								{/if}
+							</div>
+							<p class="mt-4 text-xs font-black uppercase text-center px-4 break-all {selectedFile ? 'text-emerald-700' : 'text-slate-400'}">
+								{selectedFile ? selectedFile.name : "Tap here to choose"}
+							</p>
 						</div>
-						<p class="mt-4 text-xs font-black uppercase text-center px-4 break-all {selectedFile ? 'text-emerald-700' : 'text-slate-400'}">
-							{selectedFile ? selectedFile.name : "Tap here to choose"}
-						</p>
 					</div>
+
+					{#if selectedFile && status.type !== "loading"}
+						<button
+							onclick={handleUpload}
+							class="mt-6 w-full py-5 bg-rose-500 text-white rounded-2xl font-black text-xl hover:bg-rose-600 transition-all shadow-lg shadow-rose-200 active:bg-rose-700 uppercase tracking-tighter"
+						>
+							Send Now
+						</button>
+					{/if}
 				</div>
 
-				{#if selectedFile && status.type !== "loading"}
-					<button
-						onclick={handleUpload}
-						class="mt-6 w-full py-5 bg-rose-500 text-white rounded-2xl font-black text-xl hover:bg-rose-600 transition-all shadow-lg shadow-rose-200 active:bg-rose-700 uppercase tracking-tighter"
-					>
-						Send Now
-					</button>
-				{/if}
-			</div>
+				<!-- Receive Card -->
+				<div class="bg-white rounded-2xl shadow-xl p-6 md:p-8 transition-all">
+					<h2 class="text-xl font-black mb-6 text-slate-800 uppercase tracking-tighter">Receive File</h2>
 
-			<!-- Receive Card -->
-			<div class="bg-white rounded-2xl shadow-xl p-6 md:p-8 transition-all">
-				<h2 class="text-xl font-black mb-6 text-slate-800 uppercase tracking-tighter">Receive File</h2>
-
-				<div class="flex flex-col gap-4">
-					<input
-						type="text"
-						bind:value={receiveCode}
-						onkeydown={(e) => e.key === "Enter" && handleDownload()}
-						placeholder="ENTER 6-DIGIT CODE"
-						class="w-full bg-slate-100 py-5 px-4 rounded-2xl outline-none focus:ring-4 focus:ring-rose-100 text-2xl font-mono font-black text-center placeholder:text-slate-300 uppercase tracking-widest transition-all"
-					/>
-					<button
-						onclick={handleDownload}
-						disabled={!receiveCode.trim() || status.type === "loading"}
-						class="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-xl disabled:opacity-20 active:bg-black transition-all uppercase tracking-tighter"
-					>
-						Download
-					</button>
+					<div class="flex flex-col gap-4">
+						<input
+							type="text"
+							bind:value={receiveCode}
+							onkeydown={(e) => e.key === "Enter" && handleDownload()}
+							placeholder="ENTER 6-DIGIT CODE"
+							class="w-full bg-slate-100 py-5 px-4 rounded-2xl outline-none focus:ring-4 focus:ring-rose-100 text-2xl font-mono font-black text-center placeholder:text-slate-300 uppercase tracking-widest transition-all"
+						/>
+						<button
+							onclick={handleDownload}
+							disabled={!receiveCode.trim() || status.type === "loading"}
+							class="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-xl disabled:opacity-20 active:bg-black transition-all uppercase tracking-tighter"
+						>
+							Download
+						</button>
+					</div>
 				</div>
 			</div>
 		</div>

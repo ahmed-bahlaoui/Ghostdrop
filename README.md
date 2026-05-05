@@ -1,4 +1,6 @@
-# GhostDrop
+# GhostDrop: Free temporary and anonymous file sharing online
+
+![Application Screenshot](screenshot.png)
 
 ## Overview
 
@@ -18,28 +20,55 @@ Core design goals:
 - Object storage architecture
 - End-to-end encryption (planned, client-side)
 
+## Features
+
+- Anonymous transfer flow: upload a file, get a human-friendly code, and download from another device.
+- Ephemeral transfer sessions with expiration windows (`expires_at`) and cleanup support.
+- Download limits per transfer (`max_downloads`) with download counters.
+- Streaming-first binary pipeline:
+- Upload stream goes directly to MinIO object storage.
+- Download stream is served directly from MinIO.
+- S3-compatible object storage backend using MinIO.
+- Metadata persistence in PostgreSQL (`transfers` table).
+- Redis-backed ephemeral state for code/session lookups and rate limiting.
+- API hardening with Fastify + Zod validation + multipart limits.
+- Unified Caddy gateway:
+- Serves frontend static assets.
+- Reverse proxies `/api` to Fastify.
+- Applies response compression (`zstd`, `gzip`).
+- Adds security headers (`X-Frame-Options`, `X-Content-Type-Options`).
+- Multi-protocol edge transport via Caddy:
+- HTTP/1.1 and HTTP/2 on standard endpoints.
+- HTTP/3 support on HTTPS endpoints.
+- QUIC transport support via UDP `443` exposure in staging (`443:443/udp`).
+- Local/mobile testing support:
+- LAN HTTP access mode for devices that fail local TLS validation.
+- Localtunnel bypass header flow for mobile tunnel testing.
+- Dockerized local staging environment (`compose.staging.yaml`) with auto-migrating backend startup flow.
+- TypeScript-first monorepo across frontend and backend.
+- E2E client-side encryption planned (AES-GCM before upload stream starts).
+
 ## Stack
+
+<p align="left">
+  <a href="https://github.com/thuongtruong109/icoziv">
+    <img
+      src="https://i.icoziv.workers.dev/icons?i=vite,svelte,ts,tailwindcss,fastify,ts,postgresql,redis,minio,docker&perline=5&t=light"
+    />
+  </a>
+</p>
 
 ### Frontend:
 
-- Vite
-- Svelte 5 (Runes)
-- TypeScript
-- Tailwind CSS 4
+[![Icoziv Skills](https://i.icoziv.workers.dev/icons?i=vite,svelte,ts,tailwindcss&t=light)](https://github.com/thuongtruong109/icoziv)
 
 ### Backend:
 
-- Fastify (ESM / NodeNext)
-- TypeScript
-- Zod
-- PostgreSQL
-- Redis (ephemeral state, rate limiting)
-- MinIO (S3-compatible object storage)
+[![Icoziv Skills](https://i.icoziv.workers.dev/icons?i=fastify,ts,postgresql,redis,minio&t=light)](https://github.com/thuongtruong109/icoziv)
 
-Infrastructure:
+### Infrastructure:
 
-- Docker Compose (dev + staging)
-- Caddy (unified gateway / reverse proxy / TLS)
+[![Icoziv Skills](https://i.icoziv.workers.dev/icons?i=docker)](https://github.com/thuongtruong109/icoziv)
 
 ## Architecture
 
@@ -54,11 +83,11 @@ Infrastructure:
 
 ## Database
 
-Main table:
+#### Main table:
 
 - `transfers` (`id`, `code`, `object_key`, `original_filename`, `mime_type`, `size_bytes`, `download_count`, `max_downloads`, `expires_at`, `created_at`)
 
-Migrations:
+#### Migrations:
 
 - Manual SQL migrations
 - Compiled migration runner (`migrate.js` flow in production)
@@ -72,7 +101,7 @@ Migrations:
 
 ## Current Progress
 
-Implemented:
+#### Implemented:
 
 - Dockerized local staging environment (`compose.staging.yaml`)
 - Svelte 5 UI with mobile-optimized interactions
@@ -80,7 +109,7 @@ Implemented:
 - Localtunnel/mobile testing logic
 - Auto-migrating backend container flow
 
-Known issue:
+#### Known issue:
 
 - Android local-IP HTTPS can fail due to stricter certificate validation and browser HTTPS-upgrade behavior.
 
@@ -95,6 +124,7 @@ Recent connectivity fix:
 - Security hardening (replace default credentials with secret management)
 - Integration tests for streaming pipeline
 - Better local discovery (mDNS like `ghostdrop.local`)
+- Complete UI with more features
 
 ## Coding Conventions
 
@@ -192,14 +222,13 @@ ghostdrop
 ├─ Caddy.Dockerfile.staging
 ├─ caddyFile
 ├─ Caddyfile.staging
-├─ Caddyfile.staging.bak
 ├─ compose.staging.yaml
 ├─ compose.yaml
-├─ image.png
 ├─ package.json
 ├─ packages
 ├─ pnpm-lock.yaml
 ├─ pnpm-workspace.yaml
 └─ README.md
-
 ```
+
+## Built with ❤️ and a lot of ☕
