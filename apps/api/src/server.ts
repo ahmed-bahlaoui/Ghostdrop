@@ -1,8 +1,10 @@
+import { Transform } from "node:stream";
 import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
 import rateLimit from "@fastify/rate-limit";
 import Fastify from "fastify";
 import { z } from "zod";
+import { getEnv } from "./config/env.js";
 import { startCleanupWorker } from "./services/cleanup.js";
 import redis from "./services/redis.js";
 import minio, { BUCKET_NAME, initializeStorage } from "./services/storage.js";
@@ -14,9 +16,49 @@ import {
 } from "./services/transfers.js";
 import { generateObjectKey } from "./utils/generate_minio_object_key.js";
 import { generateTransferCode } from "./utils/generate_session_transfer_code.js";
-import "./config/env.js";
 
 const isProd = process.env.NODE_ENV === "production";
+const domain = getEnv("DOMAIN");
+
+function getPositiveIntegerEnv(name: string, defaultValue: number): number {
+	const rawValue = getEnv(name);
+	if (!rawValue) return defaultValue;
+
+	const value = Number(rawValue);
+	if (!Number.isSafeInteger(value) || value <= 0) {
+		throw new Error(`${name} must be a positive integer`);
+	}
+
+	return value;
+}
+
+const MAX_FILE_SIZE_BYTES = getPositiveIntegerEnv(
+	"MAX_FILE_SIZE_BYTES",
+	1024 * 1024 * 1024,
+);
+const MAX_DOWNLOADS = getPositiveIntegerEnv("MAX_DOWNLOADS", 10);
+const MAX_EXPIRES_IN_MINUTES = getPositiveIntegerEnv(
+	"MAX_EXPIRES_IN_MINUTES",
+	7 * 24 * 60,
+);
+
+const configuredOrigins = (getEnv("CORS_ORIGINS") || "")
+	.split(",")
+	.map((origin) => origin.trim())
+	.filter(Boolean);
+
+const allowedOrigins = new Set([
+	...configuredOrigins,
+	...(domain ? [`https://${domain}`] : []),
+	...(isProd
+		? []
+		: [
+			"http://localhost:5173",
+			"http://127.0.0.1:5173",
+			"http://localhost:4173",
+			"http://127.0.0.1:4173",
+		]),
+]);
 
 const fastify = Fastify({
 	logger: isProd
@@ -35,7 +77,14 @@ const fastify = Fastify({
 
 // Register CORS
 await fastify.register(cors, {
-	origin: true,
+	origin: (origin, callback) => {
+		if (!origin || allowedOrigins.has(origin)) {
+			callback(null, true);
+			return;
+		}
+
+		callback(null, false);
+	},
 	methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 });
 
@@ -53,18 +102,42 @@ await fastify.register(rateLimit, {
 // Register Multipart for streaming uploads
 fastify.register(multipart, {
 	limits: {
-		fileSize: 10 * 1024 * 1024 * 1024, // 10GB max for streaming
+		fileSize: MAX_FILE_SIZE_BYTES,
 	},
 });
 
 // Validation Schemas
 const CreateTransferSchema = z.object({
 	filename: z.string().min(1).max(255),
-	size: z.number().int().positive(),
+	size: z.number().int().positive().max(MAX_FILE_SIZE_BYTES),
 	mimeType: z.string().min(1),
-	maxDownloads: z.number().int().positive().optional().default(1),
-	expiresInMinutes: z.number().int().positive().optional().default(60), // Default 1 hour
+	maxDownloads: z
+		.number()
+		.int()
+		.positive()
+		.max(MAX_DOWNLOADS)
+		.optional()
+		.default(1),
+	expiresInMinutes: z
+		.number()
+		.int()
+		.positive()
+		.max(MAX_EXPIRES_IN_MINUTES)
+		.optional()
+		.default(60),
 });
+
+class UploadSizeMismatchError extends Error {
+	constructor(
+		readonly expectedSize: number,
+		readonly actualSize: number,
+	) {
+		super(
+			`Uploaded file size ${actualSize} does not match expected size ${expectedSize}`,
+		);
+		this.name = "UploadSizeMismatchError";
+	}
+}
 
 fastify.get("/", async () => {
 	return { name: "GhostDrop API", version: "1.0.0" };
@@ -210,19 +283,55 @@ fastify.post("/transfers/:code/upload", async (request, reply) => {
 		return reply.status(400).send({ error: "No file provided" });
 	}
 
+	const expectedSize = Number(transfer.size_bytes);
+	let actualSize = 0;
+	const countedFile = data.file.pipe(
+		new Transform({
+			transform(chunk: Buffer | string, _encoding, callback) {
+				actualSize +=
+					typeof chunk === "string" ? Buffer.byteLength(chunk) : chunk.length;
+
+				if (actualSize > expectedSize) {
+					callback(new UploadSizeMismatchError(expectedSize, actualSize));
+					return;
+				}
+
+				callback(null, chunk);
+			},
+		}),
+	);
+
 	try {
 		// 3. Pipe to MinIO
 		// We use the known size from the metadata handshake for efficiency
 		await minio.putObject(
 			BUCKET_NAME,
 			transfer.object_key,
-			data.file,
-			Number(transfer.size_bytes),
+			countedFile,
+			expectedSize,
 			{ "Content-Type": transfer.mime_type },
 		);
 
+		if (actualSize !== expectedSize) {
+			await minio.removeObject(BUCKET_NAME, transfer.object_key);
+			return reply.status(400).send({
+				error: "Uploaded file size does not match transfer metadata",
+				expectedSize,
+				actualSize,
+			});
+		}
+
 		return { message: "Upload successful", code: transfer.code };
 	} catch (err) {
+		if (err instanceof UploadSizeMismatchError) {
+			await minio.removeObject(BUCKET_NAME, transfer.object_key).catch(() => {});
+			return reply.status(400).send({
+				error: "Uploaded file size does not match transfer metadata",
+				expectedSize: err.expectedSize,
+				actualSize: err.actualSize,
+			});
+		}
+
 		fastify.log.error(err);
 		return reply.status(500).send({ error: "Storage upload failed" });
 	}

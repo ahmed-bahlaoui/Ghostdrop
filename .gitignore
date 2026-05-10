@@ -17,6 +17,11 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
+!.env.production.example
+
+# Production secrets
+secrets/*
+!secrets/.gitkeep
 
 # Next.js
 .next/

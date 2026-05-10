@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -14,4 +14,28 @@ if (existsSync(envPath)) {
 	process.loadEnvFile(envPath);
 } else {
 	console.warn(`[Config] .env file not found at ${envPath}`);
+}
+
+export function getEnv(name: string): string | undefined {
+	const filePath = process.env[`${name}_FILE`];
+
+	if (filePath) {
+		if (!existsSync(filePath)) {
+			throw new Error(`Secret file not found for ${name}: ${filePath}`);
+		}
+
+		return readFileSync(filePath, "utf8").trim();
+	}
+
+	return process.env[name];
+}
+
+export function requireEnv(name: string): string {
+	const value = getEnv(name);
+
+	if (!value) {
+		throw new Error(`Missing required environment variable: ${name}`);
+	}
+
+	return value;
 }

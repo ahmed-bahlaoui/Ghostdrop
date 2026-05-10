@@ -1,13 +1,14 @@
 import { Client } from "minio";
+import { getEnv } from "../config/env.js";
 
-const BUCKET_NAME = process.env.MINIO_BUCKET || "ghostdrop-transfers";
+const BUCKET_NAME = getEnv("MINIO_BUCKET") || "ghostdrop-transfers";
 
 const minio = new Client({
-	endPoint: process.env.MINIO_ENDPOINT || "127.0.0.1",
-	port: Number(process.env.MINIO_PORT) || 9000,
-	useSSL: process.env.MINIO_USE_SSL === "true",
-	accessKey: process.env.MINIO_ACCESS_KEY || "minioadmin",
-	secretKey: process.env.MINIO_SECRET_KEY || "minioadmin",
+	endPoint: getEnv("MINIO_ENDPOINT") || "127.0.0.1",
+	port: Number(getEnv("MINIO_PORT")) || 9000,
+	useSSL: getEnv("MINIO_USE_SSL") === "true",
+	accessKey: getEnv("MINIO_ACCESS_KEY") || "minioadmin",
+	secretKey: getEnv("MINIO_SECRET_KEY") || "minioadmin",
 });
 
 /**

@@ -1,0 +1,15 @@
+# Stage 1: Build Frontend
+FROM node:22-slim AS web-builder
+WORKDIR /app
+RUN npm install -g pnpm
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY apps/web ./apps/web
+RUN pnpm install --filter web...
+WORKDIR /app/apps/web
+RUN pnpm run build
+
+# Stage 2: Caddy
+FROM caddy:2-alpine
+COPY --from=web-builder /app/apps/web/dist /srv
+COPY Caddyfile.production /etc/caddy/Caddyfile
+EXPOSE 80 443 443/udp

@@ -1,0 +1,34 @@
+{
+	email {$ACME_EMAIL}
+	servers {
+		protocols h1 h2 h3
+	}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	log {
+		output stdout
+		format console
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), interest-cohort=()"
+		Cross-Origin-Opener-Policy "same-origin"
+	}
+
+	handle_path /api* {
+		reverse_proxy api:3100
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
