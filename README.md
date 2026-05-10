@@ -137,6 +137,10 @@ Recent connectivity fix:
 - Containers expose Caddy on `80/443`.
 - For Android local testing, prefer explicit `http://<LAN-IP>` if browser HTTPS upgrade causes cert errors.
 
+## Deployment Operations
+
+- Production server setup, testing, maintenance, backups, and troubleshooting are documented in [`docs/server-ops.md`](docs/server-ops.md).
+
 ## Public Testing via Cloudflare Tunnel
 
 Quick way to share local staging on the internet.
