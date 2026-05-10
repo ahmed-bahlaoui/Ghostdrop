@@ -1,7 +1,5 @@
 # GhostDrop Server Operations
 
-This guide is safe to commit. It contains commands, templates, and checklists only. Do not add real secrets, private keys, access tokens, or VPS-specific credentials to this file.
-
 Production domain:
 
 ```txt
@@ -19,7 +17,6 @@ Never commit or paste these into issues, logs, docs, or chat:
 - database dumps that may contain transfer metadata
 - MinIO object backups containing uploaded files
 
-The public SSH key ending in `.pub` is safe to give to DigitalOcean.
 
 ## Fresh VPS Checklist
 
