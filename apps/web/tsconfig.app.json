@@ -3,7 +3,7 @@
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
     "target": "es2023",
-    "module": "esnext",
+    "module": "nodenext",
     "types": ["svelte", "vite/client"],
     "noEmit": true,
     /**
@@ -14,7 +14,8 @@
      */
     "allowJs": true,
     "checkJs": true,
-    "moduleDetection": "force"
+    "moduleDetection": "force",
+    "moduleResolution": "nodenext"
   },
   "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte"]
 }

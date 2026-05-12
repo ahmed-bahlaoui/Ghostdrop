@@ -70,10 +70,7 @@
 		const target = e.target as HTMLInputElement;
 		const file = target.files?.[0];
 		if (file) {
-			selectedFile = file;
-			noteContent = "";
-			revokeImagePreviewUrl();
-			status = { type: "idle", message: "" };
+			selectFile(file);
 		}
 	}
 
@@ -88,6 +85,68 @@
 		if (imagePreviewUrl) {
 			URL.revokeObjectURL(imagePreviewUrl);
 			imagePreviewUrl = "";
+		}
+	}
+
+	function selectFile(file: File) {
+		selectedFile = file;
+		noteContent = "";
+		revokeImagePreviewUrl();
+		status = { type: "idle", message: "" };
+		if (fileInput) fileInput.value = "";
+	}
+
+	function selectClipboardImage(blob: Blob, mimeType: string) {
+		selectFile(
+			new File([blob], getImageFilename(mimeType), {
+				type: mimeType,
+			}),
+		);
+	}
+
+	function selectClipboardText(text: string) {
+		selectFile(
+			new File([text], "ghostdrop-note.txt", {
+				type: "text/plain;charset=utf-8",
+			}),
+		);
+	}
+
+	function shouldIgnorePaste(event: ClipboardEvent): boolean {
+		const target = event.target as HTMLElement | null;
+
+		return (
+			target instanceof HTMLInputElement ||
+			target instanceof HTMLTextAreaElement ||
+			target?.isContentEditable === true
+		);
+	}
+
+	function handleWindowPaste(event: ClipboardEvent) {
+		if (view !== "main" || status.type === "loading" || shouldIgnorePaste(event)) {
+			return;
+		}
+
+		const clipboard = event.clipboardData;
+		if (!clipboard) return;
+
+		const imageItem = Array.from(clipboard.items).find((item) =>
+			item.type.startsWith("image/"),
+		);
+
+		if (imageItem) {
+			const image = imageItem.getAsFile();
+			if (!image) return;
+
+			event.preventDefault();
+			selectClipboardImage(image, image.type || imageItem.type);
+			return;
+		}
+
+		const text = clipboard.getData("text/plain");
+		if (text.trim()) {
+			event.preventDefault();
+			selectClipboardText(text);
 		}
 	}
 
@@ -110,13 +169,7 @@
 
 					if (imageType) {
 						const blob = await item.getType(imageType);
-						selectedFile = new File([blob], getImageFilename(imageType), {
-							type: imageType,
-						});
-						noteContent = "";
-						revokeImagePreviewUrl();
-						status = { type: "idle", message: "" };
-						if (fileInput) fileInput.value = "";
+						selectClipboardImage(blob, imageType);
 						return;
 					}
 				}
@@ -139,13 +192,7 @@
 				return;
 			}
 
-			selectedFile = new File([text], "ghostdrop-note.txt", {
-				type: "text/plain;charset=utf-8",
-			});
-			noteContent = "";
-			revokeImagePreviewUrl();
-			status = { type: "idle", message: "" };
-			if (fileInput) fileInput.value = "";
+			selectClipboardText(text);
 		} catch (err: unknown) {
 			console.error("Clipboard paste error:", err);
 			status = {
@@ -458,6 +505,8 @@
 		return `in ${days} day${days > 1 ? "s" : ""}`;
 	}
 </script>
+
+<svelte:window onpaste={handleWindowPaste} />
 
 <div
 	class="min-h-screen w-screen bg-slate-200 text-slate-900 font-sans selection:bg-rose-100 flex flex-col"
