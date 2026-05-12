@@ -1,4 +1,5 @@
 # GhostDrop: Free temporary and anonymous file sharing online
+## Live at: https://ghostdrop.app
 
 ![Application Screenshot](screenshot.png)
 
@@ -140,39 +141,6 @@ Recent connectivity fix:
 ## Deployment Operations
 
 - Production server setup, testing, maintenance, backups, and troubleshooting are documented in [`docs/server-ops.md`](docs/server-ops.md).
-
-## Public Testing via Cloudflare Tunnel
-
-Quick way to share local staging on the internet.
-
-Prerequisites:
-
-- Staging stack running and reachable at `http://localhost:80`
-- `cloudflared` installed
-
-Install (`Windows`):
-
-```powershell
-winget install --id Cloudflare.cloudflared -e
-```
-
-Start tunnel:
-
-```powershell
-cloudflared tunnel --url http://localhost:80 --no-autoupdate
-```
-
-Stop tunnel:
-
-```powershell
-Get-Process cloudflared | Stop-Process -Force
-```
-
-Notes:
-
-- Quick tunnel URLs are temporary (`https://*.trycloudflare.com`) and usually change on restart.
-- Good for demos/testing.
-- For stable production-like access, use a named tunnel with your domain.
 
 ## Project Structure
 
