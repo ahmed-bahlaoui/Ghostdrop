@@ -276,12 +276,13 @@
 
 		try {
 			const cleanCode = receiveCode.trim().toUpperCase();
-			window.location.assign(
-				`${API_URL}/transfers/${cleanCode}/download`,
-			);
-			receiveCode = "";
+			const filename = await getTransferFilename(cleanCode);
+			await downloadTransfer(cleanCode, filename);
+			resetReceiveState();
+			status = { type: "idle", message: "" };
 		} catch (err: unknown) {
 			console.error("Download error:", err);
+			resetReceiveState();
 			status = {
 				type: "error",
 				message:
@@ -292,11 +293,52 @@
 
 	async function handleDownloadFromPeek() {
 		status = { type: "loading", message: "Download starting..." };
-		window.location.assign(
-			`${API_URL}/transfers/${peekedCode}/download`,
-		);
-		receiveCode = "";
-		view = "main";
+
+		try {
+			await downloadTransfer(peekedCode, fileMeta?.filename);
+			resetReceiveState();
+			status = { type: "idle", message: "" };
+		} catch (err: unknown) {
+			console.error("Download error:", err);
+			resetReceiveState();
+			status = {
+				type: "error",
+				message:
+					err instanceof Error ? err.message : "Download failed",
+			};
+		}
+	}
+
+	async function downloadTransfer(code: string, filename?: string) {
+		const res = await fetch(`${API_URL}/transfers/${code}/download`, {
+			headers: headers,
+		});
+
+		if (!res.ok) {
+			const err = await res.json().catch(() => null);
+			throw new Error(err?.error || "Download failed");
+		}
+
+		const blob = await res.blob();
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement("a");
+		link.href = url;
+		link.download = filename || `ghostdrop-${code}`;
+		document.body.appendChild(link);
+		link.click();
+		link.remove();
+		setTimeout(() => URL.revokeObjectURL(url), 0);
+	}
+
+	async function getTransferFilename(code: string): Promise<string | undefined> {
+		const metaRes = await fetch(`${API_URL}/transfers/${code}`, {
+			headers: headers,
+		});
+
+		if (!metaRes.ok) return undefined;
+
+		const meta = await metaRes.json().catch(() => null);
+		return typeof meta?.filename === "string" ? meta.filename : undefined;
 	}
 
 	async function handleViewNote() {
@@ -375,12 +417,18 @@
 		status = { type: "idle", message: "" };
 	}
 
-	function goBack() {
-		view = "main";
+	function resetReceiveState() {
+		receiveCode = "";
+		peekedCode = "";
 		fileMeta = null;
 		noteContent = "";
 		noteCopied = false;
 		revokeImagePreviewUrl();
+		view = "main";
+	}
+
+	function goBack() {
+		resetReceiveState();
 		status = { type: "idle", message: "" };
 	}
 
