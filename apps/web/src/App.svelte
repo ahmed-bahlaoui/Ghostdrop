@@ -4,7 +4,9 @@
 	let peekedCode = $state("");
 	let expiresInMinutes = $state(60);
 	let maxDownloads = $state(1);
-	let view = $state<"main" | "peek">("main");
+	let view = $state<"main" | "peek" | "note">("main");
+	let noteContent = $state("");
+	let noteCopied = $state(false);
 	let fileMeta = $state<{
 		filename: string;
 		size: number;
@@ -19,7 +21,7 @@
 		code?: string;
 	}>({ type: "idle", message: "" });
 
-	let fileInput: HTMLInputElement;
+	let fileInput = $state<HTMLInputElement>();
 
 	const expiryOptions = [
 		{ label: "1 Hour", value: 60 },
@@ -68,7 +70,42 @@
 		const file = target.files?.[0];
 		if (file) {
 			selectedFile = file;
+			noteContent = "";
 			status = { type: "idle", message: "" };
+		}
+	}
+
+	async function handlePasteClipboard() {
+		if (!navigator.clipboard?.readText) {
+			status = {
+				type: "error",
+				message: "Clipboard text is not supported in this browser",
+			};
+			return;
+		}
+
+		try {
+			const text = await navigator.clipboard.readText();
+			if (!text.trim()) {
+				status = { type: "error", message: "Clipboard is empty" };
+				return;
+			}
+
+			selectedFile = new File([text], "ghostdrop-note.txt", {
+				type: "text/plain;charset=utf-8",
+			});
+			noteContent = "";
+			status = { type: "idle", message: "" };
+			if (fileInput) fileInput.value = "";
+		} catch (err: unknown) {
+			console.error("Clipboard paste error:", err);
+			status = {
+				type: "error",
+				message:
+					err instanceof Error
+						? err.message
+						: "Clipboard permission was denied",
+			};
 		}
 	}
 
@@ -213,10 +250,62 @@
 		view = "main";
 	}
 
+	async function handleViewNote() {
+		status = { type: "loading", message: "Opening note..." };
+		noteCopied = false;
+
+		try {
+			const res = await fetch(`${API_URL}/transfers/${peekedCode}/download`, {
+				headers: headers,
+			});
+
+			if (!res.ok) {
+				const err = await res.json().catch(() => null);
+				throw new Error(err?.error || "Note could not be opened");
+			}
+
+			noteContent = await res.text();
+			status = { type: "idle", message: "" };
+			view = "note";
+		} catch (err: unknown) {
+			console.error("Note view error:", err);
+			status = {
+				type: "error",
+				message:
+					err instanceof Error ? err.message : "Note could not be opened",
+			};
+		}
+	}
+
+	async function handleCopyNote() {
+		try {
+			await navigator.clipboard.writeText(noteContent);
+			noteCopied = true;
+		} catch (err: unknown) {
+			console.error("Note copy error:", err);
+			status = {
+				type: "error",
+				message: "Could not copy note to clipboard",
+			};
+		}
+	}
+
+	function goBackToPeek() {
+		view = "peek";
+		noteCopied = false;
+		status = { type: "idle", message: "" };
+	}
+
 	function goBack() {
 		view = "main";
 		fileMeta = null;
+		noteContent = "";
+		noteCopied = false;
 		status = { type: "idle", message: "" };
+	}
+
+	function isTextNote(meta: { mimeType: string } | null): boolean {
+		return meta?.mimeType.toLowerCase().startsWith("text/plain") ?? false;
 	}
 
 	function formatSize(bytes: number): string {
@@ -377,6 +466,14 @@
 							</p>
 						</div>
 					</div>
+
+					<button
+						onclick={handlePasteClipboard}
+						disabled={status.type === "loading"}
+						class="mt-4 w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-sm hover:bg-slate-800 transition-all active:bg-slate-950 uppercase tracking-tighter disabled:opacity-50 disabled:cursor-not-allowed"
+					>
+						Paste Clipboard Note
+					</button>
 
 					{#if selectedFile && status.type !== "loading"}
 						<div class="mt-4 space-y-4">
@@ -549,18 +646,60 @@
 					</div>
 				</div>
 
-				<button
-					onclick={handleDownloadFromPeek}
-					disabled={status.type === "loading"}
-					class="mt-8 w-full py-5 bg-rose-500 text-white rounded-2xl font-black text-xl hover:bg-rose-600 transition-all shadow-lg shadow-rose-200 active:bg-rose-700 uppercase tracking-tighter"
-				>
-					Download
-				</button>
+				{#if isTextNote(fileMeta)}
+					<button
+						onclick={handleViewNote}
+						disabled={status.type === "loading"}
+						class="mt-8 w-full py-5 bg-emerald-500 text-white rounded-2xl font-black text-xl hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-200 active:bg-emerald-700 uppercase tracking-tighter"
+					>
+						View Note
+					</button>
+				{:else}
+					<button
+						onclick={handleDownloadFromPeek}
+						disabled={status.type === "loading"}
+						class="mt-8 w-full py-5 bg-rose-500 text-white rounded-2xl font-black text-xl hover:bg-rose-600 transition-all shadow-lg shadow-rose-200 active:bg-rose-700 uppercase tracking-tighter"
+					>
+						Download
+					</button>
+				{/if}
 				<button
 					onclick={goBack}
 					class="mt-3 w-full py-3 bg-slate-100 text-slate-600 rounded-2xl font-bold uppercase hover:bg-slate-200 transition-all tracking-tighter"
 				>
 					Back to code
+				</button>
+			</div>
+		{:else if view === "note"}
+			<div
+				class="bg-white rounded-2xl shadow-xl p-6 md:p-8 w-full max-w-2xl mx-auto"
+			>
+				<h2
+					class="text-xl font-black mb-2 text-slate-800 uppercase tracking-tighter"
+				>
+					Ghost Note
+				</h2>
+				<p class="text-xs font-black uppercase text-slate-400 mb-5">
+					Text transfer {peekedCode}
+				</p>
+
+				<textarea
+					readonly
+					value={noteContent}
+					class="w-full min-h-72 bg-slate-100 text-slate-800 rounded-2xl p-4 outline-none font-mono text-sm leading-6 resize-y whitespace-pre-wrap"
+				></textarea>
+
+				<button
+					onclick={handleCopyNote}
+					class="mt-5 w-full py-5 bg-rose-500 text-white rounded-2xl font-black text-xl hover:bg-rose-600 transition-all shadow-lg shadow-rose-200 active:bg-rose-700 uppercase tracking-tighter"
+				>
+					{noteCopied ? "Copied" : "Copy Note"}
+				</button>
+				<button
+					onclick={goBackToPeek}
+					class="mt-3 w-full py-3 bg-slate-100 text-slate-600 rounded-2xl font-bold uppercase hover:bg-slate-200 transition-all tracking-tighter"
+				>
+					Back
 				</button>
 			</div>
 		{/if}
