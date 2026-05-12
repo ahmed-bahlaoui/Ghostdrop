@@ -4,9 +4,10 @@
 	let peekedCode = $state("");
 	let expiresInMinutes = $state(60);
 	let maxDownloads = $state(1);
-	let view = $state<"main" | "peek" | "note">("main");
+	let view = $state<"main" | "peek" | "note" | "image">("main");
 	let noteContent = $state("");
 	let noteCopied = $state(false);
+	let imagePreviewUrl = $state("");
 	let fileMeta = $state<{
 		filename: string;
 		size: number;
@@ -71,23 +72,70 @@
 		if (file) {
 			selectedFile = file;
 			noteContent = "";
+			revokeImagePreviewUrl();
 			status = { type: "idle", message: "" };
 		}
 	}
 
+	function getImageFilename(mimeType: string): string {
+		const extension = mimeType.split("/")[1]?.replace("jpeg", "jpg");
+		return extension
+			? `ghostdrop-clipboard.${extension}`
+			: "ghostdrop-clipboard-image";
+	}
+
+	function revokeImagePreviewUrl() {
+		if (imagePreviewUrl) {
+			URL.revokeObjectURL(imagePreviewUrl);
+			imagePreviewUrl = "";
+		}
+	}
+
 	async function handlePasteClipboard() {
-		if (!navigator.clipboard?.readText) {
+		if (!navigator.clipboard?.read && !navigator.clipboard?.readText) {
 			status = {
 				type: "error",
-				message: "Clipboard text is not supported in this browser",
+				message: "Clipboard access is not supported in this browser",
 			};
 			return;
 		}
 
 		try {
+			if (navigator.clipboard.read) {
+				const items = await navigator.clipboard.read();
+				for (const item of items) {
+					const imageType = item.types.find((type) =>
+						type.startsWith("image/"),
+					);
+
+					if (imageType) {
+						const blob = await item.getType(imageType);
+						selectedFile = new File([blob], getImageFilename(imageType), {
+							type: imageType,
+						});
+						noteContent = "";
+						revokeImagePreviewUrl();
+						status = { type: "idle", message: "" };
+						if (fileInput) fileInput.value = "";
+						return;
+					}
+				}
+			}
+
+			if (!navigator.clipboard.readText) {
+				status = {
+					type: "error",
+					message: "Clipboard does not contain an image",
+				};
+				return;
+			}
+
 			const text = await navigator.clipboard.readText();
 			if (!text.trim()) {
-				status = { type: "error", message: "Clipboard is empty" };
+				status = {
+					type: "error",
+					message: "Clipboard does not contain text or an image",
+				};
 				return;
 			}
 
@@ -95,6 +143,7 @@
 				type: "text/plain;charset=utf-8",
 			});
 			noteContent = "";
+			revokeImagePreviewUrl();
 			status = { type: "idle", message: "" };
 			if (fileInput) fileInput.value = "";
 		} catch (err: unknown) {
@@ -253,6 +302,7 @@
 	async function handleViewNote() {
 		status = { type: "loading", message: "Opening note..." };
 		noteCopied = false;
+		revokeImagePreviewUrl();
 
 		try {
 			const res = await fetch(`${API_URL}/transfers/${peekedCode}/download`, {
@@ -277,6 +327,34 @@
 		}
 	}
 
+	async function handleViewImage() {
+		status = { type: "loading", message: "Opening image..." };
+		revokeImagePreviewUrl();
+
+		try {
+			const res = await fetch(`${API_URL}/transfers/${peekedCode}/download`, {
+				headers: headers,
+			});
+
+			if (!res.ok) {
+				const err = await res.json().catch(() => null);
+				throw new Error(err?.error || "Image could not be opened");
+			}
+
+			const blob = await res.blob();
+			imagePreviewUrl = URL.createObjectURL(blob);
+			status = { type: "idle", message: "" };
+			view = "image";
+		} catch (err: unknown) {
+			console.error("Image preview error:", err);
+			status = {
+				type: "error",
+				message:
+					err instanceof Error ? err.message : "Image could not be opened",
+			};
+		}
+	}
+
 	async function handleCopyNote() {
 		try {
 			await navigator.clipboard.writeText(noteContent);
@@ -293,6 +371,7 @@
 	function goBackToPeek() {
 		view = "peek";
 		noteCopied = false;
+		revokeImagePreviewUrl();
 		status = { type: "idle", message: "" };
 	}
 
@@ -301,11 +380,16 @@
 		fileMeta = null;
 		noteContent = "";
 		noteCopied = false;
+		revokeImagePreviewUrl();
 		status = { type: "idle", message: "" };
 	}
 
 	function isTextNote(meta: { mimeType: string } | null): boolean {
 		return meta?.mimeType.toLowerCase().startsWith("text/plain") ?? false;
+	}
+
+	function isImage(meta: { mimeType: string } | null): boolean {
+		return meta?.mimeType.toLowerCase().startsWith("image/") ?? false;
 	}
 
 	function formatSize(bytes: number): string {
@@ -472,7 +556,7 @@
 						disabled={status.type === "loading"}
 						class="mt-4 w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-sm hover:bg-slate-800 transition-all active:bg-slate-950 uppercase tracking-tighter disabled:opacity-50 disabled:cursor-not-allowed"
 					>
-						Paste Clipboard Note
+						Paste Clipboard
 					</button>
 
 					{#if selectedFile && status.type !== "loading"}
@@ -654,6 +738,14 @@
 					>
 						View Note
 					</button>
+				{:else if isImage(fileMeta)}
+					<button
+						onclick={handleViewImage}
+						disabled={status.type === "loading"}
+						class="mt-8 w-full py-5 bg-emerald-500 text-white rounded-2xl font-black text-xl hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-200 active:bg-emerald-700 uppercase tracking-tighter"
+					>
+						Preview Image
+					</button>
 				{:else}
 					<button
 						onclick={handleDownloadFromPeek}
@@ -698,6 +790,34 @@
 				<button
 					onclick={goBackToPeek}
 					class="mt-3 w-full py-3 bg-slate-100 text-slate-600 rounded-2xl font-bold uppercase hover:bg-slate-200 transition-all tracking-tighter"
+				>
+					Back
+				</button>
+			</div>
+		{:else if view === "image" && imagePreviewUrl}
+			<div
+				class="bg-white rounded-2xl shadow-xl p-6 md:p-8 w-full max-w-2xl mx-auto"
+			>
+				<h2
+					class="text-xl font-black mb-2 text-slate-800 uppercase tracking-tighter"
+				>
+					Image Preview
+				</h2>
+				<p class="text-xs font-black uppercase text-slate-400 mb-5">
+					Image transfer {peekedCode}
+				</p>
+
+				<div class="bg-slate-100 rounded-2xl p-3">
+					<img
+						src={imagePreviewUrl}
+						alt={fileMeta?.filename || "Clipboard image preview"}
+						class="max-h-[70vh] w-full object-contain rounded-xl"
+					/>
+				</div>
+
+				<button
+					onclick={goBackToPeek}
+					class="mt-5 w-full py-3 bg-slate-100 text-slate-600 rounded-2xl font-bold uppercase hover:bg-slate-200 transition-all tracking-tighter"
 				>
 					Back
 				</button>
