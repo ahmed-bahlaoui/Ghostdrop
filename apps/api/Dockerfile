@@ -1,7 +1,9 @@
 # Stage 1: Build
 FROM node:22-slim AS builder
 WORKDIR /app
-RUN npm install -g pnpm
+RUN corepack enable
+
+# RUN npm install -g pnpm
 
 # Copy only what's needed for the build
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./

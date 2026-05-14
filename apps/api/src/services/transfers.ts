@@ -11,6 +11,9 @@ export interface Transfer {
 	max_downloads: number | null;
 	expires_at: Date;
 	created_at: Date;
+	encryption_algorithm: string;
+	encryption_iv: string | null;
+	original_size_bytes: string | null;
 }
 
 export interface CreateTransferInput {
@@ -21,6 +24,9 @@ export interface CreateTransferInput {
 	size_bytes: number;
 	max_downloads?: number;
 	expires_at: Date;
+	encryption_algorithm?: string | undefined;
+	encryption_iv?: string | null | undefined;
+	original_size_bytes?: number | undefined;
 }
 
 export async function testPostgres(): Promise<void> {
@@ -39,8 +45,17 @@ export async function createTransfer(
 ): Promise<Transfer> {
 	const query = `
         INSERT INTO transfers (
-            code, object_key, original_filename, mime_type, size_bytes, max_downloads, expires_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+            code,
+			object_key,
+			original_filename,
+			mime_type,
+			size_bytes,
+			max_downloads,
+			expires_at,
+			encryption_algorithm,
+			encryption_iv,
+			original_size_bytes
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         RETURNING *
     `;
 
@@ -52,6 +67,9 @@ export async function createTransfer(
 		input.size_bytes,
 		input.max_downloads ?? 1,
 		input.expires_at,
+		input.encryption_algorithm ?? "none",
+		input.encryption_iv ?? null,
+		input.original_size_bytes ?? null,
 	];
 
 	const result = await pool.query<Transfer>(query, values);

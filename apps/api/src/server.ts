@@ -113,21 +113,28 @@ const CreateTransferSchema = z.object({
 	filename: z.string().min(1).max(255),
 	size: z.number().int().positive().max(MAX_FILE_SIZE_BYTES),
 	mimeType: z.string().min(1),
-	maxDownloads: z
-		.number()
-		.int()
-		.positive()
-		.max(MAX_DOWNLOADS)
-		.optional()
-		.default(1),
-	expiresInMinutes: z
-		.number()
-		.int()
-		.positive()
-		.max(MAX_EXPIRES_IN_MINUTES)
-		.optional()
-		.default(60),
+	maxDownloads: z.number().int().positive().max(MAX_DOWNLOADS).optional().default(1),
+	expiresInMinutes: z.number().int().positive().max(MAX_EXPIRES_IN_MINUTES).optional().default(60),
+	originalSize: z.number().int().positive().max(MAX_FILE_SIZE_BYTES).optional(),
+	encryptionAlgorithm: z.enum(["none", "AES-GCM-256"]).optional().default("none"),
+	encryptionIv: z.string().min(1).max(128).nullable().optional(),
+}).superRefine((value, context) => {
+	if (value.encryptionAlgorithm === "none" && value.encryptionIv) {
+		context.addIssue({
+			code: "custom",
+			path: ["encryptionIv"],
+			message: "encryptionIv is only allowed for encrypted transfers",
+		});
+	}
+	if (value.encryptionAlgorithm !== "none" && !value.encryptionIv) {
+		context.addIssue({
+			code: "custom",
+			path: ["encryptionIv"],
+			message: "encryptionIv is required for encrypted transfers",
+		});
+	}
 });
+
 
 class UploadSizeMismatchError extends Error {
 	constructor(
@@ -180,9 +187,7 @@ fastify.post(
 				details: parseResult.error.format(),
 			});
 		}
-
-		const { filename, size, mimeType, maxDownloads, expiresInMinutes } =
-			parseResult.data;
+		const { filename, size, originalSize, mimeType, encryptionAlgorithm, encryptionIv, maxDownloads, expiresInMinutes } = parseResult.data;
 
 		const code = generateTransferCode();
 		const objectKey = generateObjectKey(filename);
@@ -190,15 +195,19 @@ fastify.post(
 		expiresAt.setMinutes(expiresAt.getMinutes() + expiresInMinutes);
 
 		try {
-			const transfer = await createTransfer({
-				code,
-				object_key: objectKey,
-				original_filename: filename,
-				mime_type: mimeType,
-				size_bytes: size,
-				max_downloads: maxDownloads,
-				expires_at: expiresAt,
-			});
+			const transfer = await createTransfer(
+				{
+					code,
+					object_key: objectKey,
+					original_filename: filename,
+					mime_type: mimeType,
+					size_bytes: size,
+					max_downloads: maxDownloads,
+					expires_at: expiresAt,
+					encryption_algorithm: encryptionAlgorithm,
+					encryption_iv: encryptionIv ?? null,
+					original_size_bytes: originalSize,
+				});
 
 			await redis.set(
 				`transfer:code:${code}`,
@@ -251,10 +260,17 @@ fastify.get(
 		return {
 			filename: transfer.original_filename,
 			size: Number(transfer.size_bytes),
+			originalSize: transfer.original_size_bytes
+				? Number(transfer.original_size_bytes)
+				: null,
 			mimeType: transfer.mime_type,
 			expiresAt: transfer.expires_at,
 			downloadCount: transfer.download_count,
 			maxDownloads: transfer.max_downloads,
+			encryption: {
+				algorithm: transfer.encryption_algorithm,
+				iv: transfer.encryption_iv,
+			}
 		};
 	},
 );
@@ -326,7 +342,7 @@ fastify.post("/transfers/:code/upload", async (request, reply) => {
 		return { message: "Upload successful", code: transfer.code };
 	} catch (err) {
 		if (err instanceof UploadSizeMismatchError) {
-			await minio.removeObject(BUCKET_NAME, transfer.object_key).catch(() => {});
+			await minio.removeObject(BUCKET_NAME, transfer.object_key).catch(() => { });
 			return reply.status(400).send({
 				error: "Uploaded file size does not match transfer metadata",
 				expectedSize: err.expectedSize,
