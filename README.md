@@ -53,6 +53,9 @@ Core design goals:
 - Dockerized local staging environment (`compose.staging.yaml`) with auto-migrating backend startup flow.
 - TypeScript-first monorepo across frontend and backend.
 
+## Optional E2EE flow
+!["E2EE flow screenshot"](screenshot_2.png)
+
 ## Stack
 
 <p align="left">
@@ -158,9 +161,9 @@ Recent connectivity fix:
 - Production server setup, testing, maintenance, backups, and troubleshooting are documented in [`docs/server-ops.md`](docs/server-ops.md).
 
 ## Project Structure
-
 ```
 ghostdrop
+├─ .dockerignore
 ├─ apps
 │  ├─ api
 │  │  ├─ Dockerfile
@@ -173,6 +176,7 @@ ghostdrop
 │  │  │  │  └─ migrations
 │  │  │  │     ├─ 001_create_transfers.sql
 │  │  │  │     └─ 002_add_encryption_metadata_to_transfers.sql
+│  │  │  ├─ routes
 │  │  │  ├─ server.ts
 │  │  │  ├─ services
 │  │  │  │  ├─ cleanup.ts
@@ -185,9 +189,12 @@ ghostdrop
 │  │  │     └─ generate_session_transfer_code.ts
 │  │  └─ tsconfig.json
 │  └─ web
+│     ├─ eslint.config.js
 │     ├─ index.html
 │     ├─ package.json
 │     ├─ public
+│     │  ├─ favicon-16.png
+│     │  ├─ favicon-32.png
 │     │  ├─ favicon.svg
 │     │  └─ icons.svg
 │     ├─ README.md
@@ -202,8 +209,8 @@ ghostdrop
 │     ├─ tsconfig.json
 │     ├─ tsconfig.node.json
 │     └─ vite.config.ts
-├─ Caddy.Dockerfile.staging
 ├─ Caddy.Dockerfile.production
+├─ Caddy.Dockerfile.staging
 ├─ caddyFile
 ├─ Caddyfile.production
 ├─ Caddyfile.staging
@@ -211,11 +218,14 @@ ghostdrop
 ├─ compose.staging.yaml
 ├─ compose.yaml
 ├─ docs
+│  ├─ server-ops.md
+│  └─ test-production-locally.md
 ├─ package.json
 ├─ packages
 ├─ pnpm-lock.yaml
 ├─ pnpm-workspace.yaml
-└─ README.md
+├─ README.md
+├─ screenshot.png
+└─ screenshot_2.png
 ```
-
 ## Built with ❤️ and a lot of ☕
