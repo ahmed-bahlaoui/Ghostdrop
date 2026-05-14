@@ -21,6 +21,8 @@
 	let peekedCode = $state("");
 	let shareLink = $state("");
 	let shareKey = $state("");
+	let copiedShareLink = $state(false);
+	let copiedShareKey = $state(false);
 	let endToEndEncryption = $state(false);
 	let expiresInMinutes = $state(60);
 	let maxDownloads = $state(1);
@@ -120,6 +122,8 @@
 		noteContent = "";
 		shareLink = "";
 		shareKey = "";
+		copiedShareLink = false;
+		copiedShareKey = false;
 		revokeImagePreviewUrl();
 		status = { type: "idle", message: "" };
 		if (fileInput) fileInput.value = "";
@@ -582,6 +586,26 @@
 		}
 	}
 
+	async function copyShareValue(value: string, kind: "link" | "key") {
+		try {
+			await navigator.clipboard.writeText(value);
+			if (kind === "link") {
+				copiedShareLink = true;
+				setTimeout(() => (copiedShareLink = false), 1800);
+				return;
+			}
+
+			copiedShareKey = true;
+			setTimeout(() => (copiedShareKey = false), 1800);
+		} catch (err: unknown) {
+			console.error("Share copy error:", err);
+			status = {
+				type: "error",
+				message: "Could not copy to clipboard",
+			};
+		}
+	}
+
 	function goBackToPeek() {
 		view = "peek";
 		noteCopied = false;
@@ -652,6 +676,11 @@
 			>
 				ghostdrop
 			</span>
+			<span
+				class="rounded-full bg-emerald-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-700"
+			>
+				Added E2EE
+			</span>
 		</div>
 	</header>
 
@@ -705,11 +734,52 @@
 								>
 									Secure Share Link
 								</p>
-								<p
-									class="rounded-xl bg-slate-100 p-3 text-left text-xs font-mono text-slate-700 break-all select-all"
+								<div
+									class="flex items-stretch gap-2 rounded-xl bg-slate-100 p-2"
 								>
-									{shareLink}
-								</p>
+									<p
+										class="min-w-0 flex-1 p-1 text-left text-xs font-mono text-slate-700 break-all select-all"
+									>
+										{shareLink}
+									</p>
+									<button
+										type="button"
+										onclick={() => copyShareValue(shareLink, "link")}
+										title="Copy secure share link"
+										aria-label="Copy secure share link"
+										class="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-white text-slate-500 shadow-sm transition-all hover:text-rose-500 active:bg-slate-200"
+									>
+										{#if copiedShareLink}
+											<span class="text-xs font-black text-emerald-600"
+												>OK</span
+											>
+										{:else}
+											<svg
+												width="18"
+												height="18"
+												viewBox="0 0 24 24"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2"
+												stroke-linecap="round"
+												stroke-linejoin="round"
+												aria-hidden="true"
+											>
+												<rect
+													x="9"
+													y="9"
+													width="13"
+													height="13"
+													rx="2"
+													ry="2"
+												/>
+												<path
+													d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+												/>
+											</svg>
+										{/if}
+									</button>
+								</div>
 							{/if}
 							{#if shareKey}
 								<p
@@ -717,11 +787,52 @@
 								>
 									Decryption Key
 								</p>
-								<p
-									class="rounded-xl bg-slate-100 p-3 text-left text-xs font-mono text-slate-700 break-all select-all"
+								<div
+									class="flex items-stretch gap-2 rounded-xl bg-slate-100 p-2"
 								>
-									{shareKey}
-								</p>
+									<p
+										class="min-w-0 flex-1 p-1 text-left text-xs font-mono text-slate-700 break-all select-all"
+									>
+										{shareKey}
+									</p>
+									<button
+										type="button"
+										onclick={() => copyShareValue(shareKey, "key")}
+										title="Copy decryption key"
+										aria-label="Copy decryption key"
+										class="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-white text-slate-500 shadow-sm transition-all hover:text-rose-500 active:bg-slate-200"
+									>
+										{#if copiedShareKey}
+											<span class="text-xs font-black text-emerald-600"
+												>OK</span
+											>
+										{:else}
+											<svg
+												width="18"
+												height="18"
+												viewBox="0 0 24 24"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2"
+												stroke-linecap="round"
+												stroke-linejoin="round"
+												aria-hidden="true"
+											>
+												<rect
+													x="9"
+													y="9"
+													width="13"
+													height="13"
+													rx="2"
+													ry="2"
+												/>
+												<path
+													d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+												/>
+											</svg>
+										{/if}
+									</button>
+								</div>
 							{/if}
 						</div>
 					{/if}
