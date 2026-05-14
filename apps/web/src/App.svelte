@@ -1,21 +1,34 @@
 <script lang="ts">
+	import { decryptFile, encryptFile } from "./lib/crypto.js";
+
+	type TransferMetadata = {
+		filename: string;
+		size: number;
+		originalSize: number | null;
+		mimeType: string;
+		downloadCount: number;
+		maxDownloads: number;
+		expiresAt: string;
+		encryption: {
+			algorithm: "none" | "AES-GCM-256";
+			iv: string | null;
+		};
+	};
+
 	let selectedFile = $state<File | null>(null);
 	let receiveCode = $state("");
+	let receiveKey = $state("");
 	let peekedCode = $state("");
+	let shareLink = $state("");
+	let shareKey = $state("");
+	let endToEndEncryption = $state(false);
 	let expiresInMinutes = $state(60);
 	let maxDownloads = $state(1);
 	let view = $state<"main" | "peek" | "note" | "image">("main");
 	let noteContent = $state("");
 	let noteCopied = $state(false);
 	let imagePreviewUrl = $state("");
-	let fileMeta = $state<{
-		filename: string;
-		size: number;
-		mimeType: string;
-		downloadCount: number;
-		maxDownloads: number;
-		expiresAt: string;
-	} | null>(null);
+	let fileMeta = $state<TransferMetadata | null>(null);
 	let status = $state<{
 		type: "idle" | "loading" | "success" | "error";
 		message: string;
@@ -23,6 +36,7 @@
 	}>({ type: "idle", message: "" });
 
 	let fileInput = $state<HTMLInputElement>();
+	let parsedShareFragment = false;
 
 	const expiryOptions = [
 		{ label: "1 Hour", value: 60 },
@@ -60,6 +74,19 @@
 
 	const API_URL = getApiUrl();
 
+	$effect(() => {
+		if (parsedShareFragment || typeof window === "undefined") return;
+
+		parsedShareFragment = true;
+		const fragment = window.location.hash.replace(/^#\/?/, "");
+		const params = new URLSearchParams(fragment);
+		const transfer = params.get("transfer");
+		const key = params.get("key");
+
+		if (transfer) receiveCode = transfer.toUpperCase();
+		if (key) receiveKey = key;
+	});
+
 	// Localtunnel/Ngrok bypass header
 	const headers = {
 		"Bypass-Tunnel-Reminder": "true",
@@ -91,6 +118,8 @@
 	function selectFile(file: File) {
 		selectedFile = file;
 		noteContent = "";
+		shareLink = "";
+		shareKey = "";
 		revokeImagePreviewUrl();
 		status = { type: "idle", message: "" };
 		if (fileInput) fileInput.value = "";
@@ -208,9 +237,21 @@
 	async function handleUpload() {
 		if (!selectedFile) return;
 
-		status = { type: "loading", message: "Initializing transfer..." };
+		status = {
+			type: "loading",
+			message: endToEndEncryption
+				? "Encrypting file..."
+				: "Initializing transfer...",
+		};
 
 		try {
+			const encrypted = endToEndEncryption
+				? await encryptFile(selectedFile)
+				: null;
+
+			status = { type: "loading", message: "Initializing transfer..." };
+			const uploadFile = encrypted?.file ?? selectedFile;
+
 			// 1. Handshake
 			const handshakeRes = await fetch(`${API_URL}/transfers`, {
 				method: "POST",
@@ -220,8 +261,11 @@
 				},
 				body: JSON.stringify({
 					filename: selectedFile.name,
-					size: selectedFile.size,
+					size: uploadFile.size,
+					originalSize: encrypted?.originalSize,
 					mimeType: selectedFile.type || "application/octet-stream",
+					encryptionAlgorithm: encrypted?.algorithm ?? "none",
+					encryptionIv: encrypted?.ivBase64Url ?? null,
 					maxDownloads,
 					expiresInMinutes,
 				}),
@@ -248,7 +292,7 @@
 
 			// 2. Binary Stream
 			const formData = new FormData();
-			formData.append("file", selectedFile);
+			formData.append("file", uploadFile);
 
 			const uploadRes = await fetch(
 				`${API_URL}/transfers/${code}/upload`,
@@ -263,6 +307,10 @@
 				throw new Error("Streaming upload failed");
 			}
 
+			shareKey = encrypted?.keyBase64Url ?? "";
+			shareLink = encrypted
+				? buildEncryptedShareLink(code, encrypted.keyBase64Url)
+				: "";
 			status = {
 				type: "success",
 				message: "File ready for ghosting!",
@@ -296,14 +344,7 @@
 			}
 
 			const meta = await metaRes.json();
-			fileMeta = {
-				filename: meta.filename,
-				size: meta.size,
-				mimeType: meta.mimeType,
-				downloadCount: meta.downloadCount,
-				maxDownloads: meta.maxDownloads,
-				expiresAt: meta.expiresAt,
-			};
+			fileMeta = normalizeTransferMetadata(meta);
 			peekedCode = cleanCode;
 			status = { type: "idle", message: "" };
 			view = "peek";
@@ -323,8 +364,8 @@
 
 		try {
 			const cleanCode = receiveCode.trim().toUpperCase();
-			const filename = await getTransferFilename(cleanCode);
-			await downloadTransfer(cleanCode, filename);
+			const meta = await getTransferMetadata(cleanCode);
+			await downloadTransfer(cleanCode, meta);
 			resetReceiveState();
 			status = { type: "idle", message: "" };
 		} catch (err: unknown) {
@@ -342,7 +383,7 @@
 		status = { type: "loading", message: "Download starting..." };
 
 		try {
-			await downloadTransfer(peekedCode, fileMeta?.filename);
+			await downloadTransfer(peekedCode, fileMeta);
 			resetReceiveState();
 			status = { type: "idle", message: "" };
 		} catch (err: unknown) {
@@ -356,7 +397,8 @@
 		}
 	}
 
-	async function downloadTransfer(code: string, filename?: string) {
+	async function downloadTransfer(code: string, meta?: TransferMetadata | null) {
+		const transferMeta = meta ?? (await getTransferMetadata(code));
 		const res = await fetch(`${API_URL}/transfers/${code}/download`, {
 			headers: headers,
 		});
@@ -367,28 +409,106 @@
 		}
 
 		const blob = await res.blob();
-		const url = URL.createObjectURL(blob);
+		const file = await decryptTransferBlob(blob, transferMeta);
+		const url = URL.createObjectURL(file);
 		const link = document.createElement("a");
 		link.href = url;
-		link.download = filename || `ghostdrop-${code}`;
+		link.download = file.name || `ghostdrop-${code}`;
 		document.body.appendChild(link);
 		link.click();
 		link.remove();
 		setTimeout(() => URL.revokeObjectURL(url), 0);
 	}
 
-	async function getTransferFilename(code: string): Promise<string | undefined> {
+	async function getTransferMetadata(code: string): Promise<TransferMetadata> {
 		const metaRes = await fetch(`${API_URL}/transfers/${code}`, {
 			headers: headers,
 		});
 
-		if (!metaRes.ok) return undefined;
+		if (!metaRes.ok) {
+			const err = await metaRes.json().catch(() => null);
+			throw new Error(err?.error || "File metadata could not be loaded");
+		}
 
-		const meta = await metaRes.json().catch(() => null);
-		return typeof meta?.filename === "string" ? meta.filename : undefined;
+		const meta = await metaRes.json();
+		return normalizeTransferMetadata(meta);
+	}
+
+	function normalizeTransferMetadata(meta: unknown): TransferMetadata {
+		const value = meta as Partial<TransferMetadata>;
+		const encryption = value.encryption ?? {
+			algorithm: "none",
+			iv: null,
+		};
+
+		return {
+			filename: String(value.filename ?? ""),
+			size: Number(value.size ?? 0),
+			originalSize:
+				value.originalSize === null || value.originalSize === undefined
+					? null
+					: Number(value.originalSize),
+			mimeType: String(value.mimeType ?? "application/octet-stream"),
+			downloadCount: Number(value.downloadCount ?? 0),
+			maxDownloads: Number(value.maxDownloads ?? 1),
+			expiresAt: String(value.expiresAt ?? ""),
+			encryption: {
+				algorithm:
+					encryption.algorithm === "AES-GCM-256"
+						? "AES-GCM-256"
+						: "none",
+				iv: encryption.iv ?? null,
+			},
+		};
+	}
+
+	async function decryptTransferBlob(
+		encryptedBlob: Blob,
+		meta: TransferMetadata,
+	): Promise<File> {
+		if (meta.encryption.algorithm === "none") {
+			return new File([encryptedBlob], meta.filename, {
+				type: meta.mimeType || "application/octet-stream",
+			});
+		}
+
+		if (!meta.encryption.iv) {
+			throw new Error("Transfer is missing encryption metadata");
+		}
+
+		const key = receiveKey.trim();
+		if (!key) {
+			throw new Error("Decryption key is required");
+		}
+
+		try {
+			return await decryptFile({
+				encryptedBlob,
+				keyBase64Url: key,
+				ivBase64Url: meta.encryption.iv,
+				filename: meta.filename,
+				mimeType: meta.mimeType,
+			});
+		} catch (err) {
+			console.error("Decrypt error:", err);
+			throw new Error("Could not decrypt file. Check the transfer key.", {
+				cause: err,
+			});
+		}
+	}
+
+	function buildEncryptedShareLink(code: string, key: string): string {
+		const baseUrl =
+			typeof window === "undefined"
+				? ""
+				: `${window.location.origin}${window.location.pathname}`;
+		const params = new URLSearchParams({ transfer: code, key });
+		return `${baseUrl}#${params.toString()}`;
 	}
 
 	async function handleViewNote() {
+		if (!fileMeta) return;
+
 		status = { type: "loading", message: "Opening note..." };
 		noteCopied = false;
 		revokeImagePreviewUrl();
@@ -403,7 +523,9 @@
 				throw new Error(err?.error || "Note could not be opened");
 			}
 
-			noteContent = await res.text();
+			const encryptedBlob = await res.blob();
+			const file = await decryptTransferBlob(encryptedBlob, fileMeta);
+			noteContent = await file.text();
 			status = { type: "idle", message: "" };
 			view = "note";
 		} catch (err: unknown) {
@@ -417,6 +539,8 @@
 	}
 
 	async function handleViewImage() {
+		if (!fileMeta) return;
+
 		status = { type: "loading", message: "Opening image..." };
 		revokeImagePreviewUrl();
 
@@ -430,8 +554,9 @@
 				throw new Error(err?.error || "Image could not be opened");
 			}
 
-			const blob = await res.blob();
-			imagePreviewUrl = URL.createObjectURL(blob);
+			const encryptedBlob = await res.blob();
+			const file = await decryptTransferBlob(encryptedBlob, fileMeta);
+			imagePreviewUrl = URL.createObjectURL(file);
 			status = { type: "idle", message: "" };
 			view = "image";
 		} catch (err: unknown) {
@@ -466,6 +591,7 @@
 
 	function resetReceiveState() {
 		receiveCode = "";
+		receiveKey = "";
 		peekedCode = "";
 		fileMeta = null;
 		noteContent = "";
@@ -573,6 +699,30 @@
 							>
 								{status.code}
 							</p>
+							{#if shareLink}
+								<p
+									class="mt-4 text-[10px] uppercase text-slate-400 font-black mb-1"
+								>
+									Secure Share Link
+								</p>
+								<p
+									class="rounded-xl bg-slate-100 p-3 text-left text-xs font-mono text-slate-700 break-all select-all"
+								>
+									{shareLink}
+								</p>
+							{/if}
+							{#if shareKey}
+								<p
+									class="mt-4 text-[10px] uppercase text-slate-400 font-black mb-1"
+								>
+									Decryption Key
+								</p>
+								<p
+									class="rounded-xl bg-slate-100 p-3 text-left text-xs font-mono text-slate-700 break-all select-all"
+								>
+									{shareKey}
+								</p>
+							{/if}
 						</div>
 					{/if}
 				</div>
@@ -658,6 +808,28 @@
 
 					{#if selectedFile && status.type !== "loading"}
 						<div class="mt-4 space-y-4">
+							<label
+								class="flex items-center justify-between gap-4 rounded-2xl bg-slate-100 p-4"
+							>
+								<span>
+									<span
+										class="block text-xs font-black uppercase text-slate-700"
+									>
+										End to end encryption
+									</span>
+									<span
+										class="mt-1 block text-xs font-bold text-slate-400"
+									>
+										Requires secure link or key to open
+									</span>
+								</span>
+								<input
+									type="checkbox"
+									bind:checked={endToEndEncryption}
+									class="h-6 w-11 accent-rose-500"
+								/>
+							</label>
+
 							<div>
 								<p
 									class="text-xs font-black uppercase text-slate-400 mb-2"
@@ -729,8 +901,16 @@
 							bind:value={receiveCode}
 							onkeydown={(e) =>
 								e.key === "Enter" && handlePeek()}
-							placeholder="ENTER 6-DIGIT CODE"
+							placeholder="ENTER TRANSFER CODE"
 							class="w-full bg-slate-100 py-5 px-4 rounded-2xl outline-none focus:ring-4 focus:ring-rose-100 text-2xl font-mono font-black text-center placeholder:text-slate-300 uppercase tracking-widest transition-all"
+						/>
+						<input
+							type="text"
+							bind:value={receiveKey}
+							onkeydown={(e) =>
+								e.key === "Enter" && handlePeek()}
+							placeholder="PASTE DECRYPTION KEY"
+							class="w-full bg-slate-100 py-4 px-4 rounded-2xl outline-none focus:ring-4 focus:ring-emerald-100 text-sm font-mono font-bold text-center placeholder:text-slate-300 transition-all"
 						/>
 						<div class="flex gap-3">
 							<button
@@ -794,7 +974,7 @@
 								Size
 							</p>
 							<p class="font-bold text-slate-800">
-								{formatSize(fileMeta.size)}
+								{formatSize(fileMeta.originalSize ?? fileMeta.size)}
 							</p>
 						</div>
 					</div>
