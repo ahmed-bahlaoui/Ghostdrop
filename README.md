@@ -19,11 +19,16 @@ Core design goals:
 - Ephemeral transfers
 - Streaming uploads/downloads
 - Object storage architecture
-- End-to-end encryption (planned, client-side)
+- Optional client-side end-to-end encryption
 
 ## Features
 
 - Anonymous transfer flow: upload a file, get a human-friendly code, and download from another device.
+- Optional end-to-end encryption:
+- Browser encrypts files with AES-GCM before upload.
+- The API stores only ciphertext plus public encryption metadata.
+- Encrypted transfers require the secure share link or decryption key to open.
+- Code-only transfers remain available when E2EE is disabled.
 - Ephemeral transfer sessions with expiration windows (`expires_at`) and cleanup support.
 - Download limits per transfer (`max_downloads`) with download counters.
 - Streaming-first binary pipeline:
@@ -47,7 +52,6 @@ Core design goals:
 - Localtunnel bypass header flow for mobile tunnel testing.
 - Dockerized local staging environment (`compose.staging.yaml`) with auto-migrating backend startup flow.
 - TypeScript-first monorepo across frontend and backend.
-- E2E client-side encryption planned (AES-GCM before upload stream starts).
 
 ## Stack
 
@@ -86,7 +90,14 @@ Core design goals:
 
 #### Main table:
 
-- `transfers` (`id`, `code`, `object_key`, `original_filename`, `mime_type`, `size_bytes`, `download_count`, `max_downloads`, `expires_at`, `created_at`)
+- `transfers` (`id`, `code`, `object_key`, `original_filename`, `mime_type`, `size_bytes`, `original_size_bytes`, `encryption_algorithm`, `encryption_iv`, `download_count`, `max_downloads`, `expires_at`, `created_at`)
+
+Encryption metadata notes:
+
+- `size_bytes` is the stored object size. For encrypted transfers, this is the encrypted byte size.
+- `original_size_bytes` stores the plaintext size for display when E2EE is enabled.
+- `encryption_iv` is public AES-GCM metadata required for browser-side decryption.
+- Decryption keys are never stored in PostgreSQL, Redis, MinIO, or API requests.
 
 #### Migrations:
 
@@ -99,6 +110,8 @@ Core design goals:
 - Unified gateway: Caddy serves UI and proxies `/api` to Fastify.
 - NodeNext compatibility: API imports use `.js` extensions in TS source for ESM runtime compatibility after build.
 - Mobile staging support: localtunnel bypass logic + dynamic IP awareness for device testing.
+- E2EE is optional: the default code-only flow stays simple, while privacy-sensitive transfers can use a secure link or separate decryption key.
+- URL fragments carry E2EE keys in secure links so keys are not sent to the backend by the browser.
 
 ## Current Progress
 
@@ -106,6 +119,8 @@ Core design goals:
 
 - Dockerized local staging environment (`compose.staging.yaml`)
 - Svelte 5 UI with mobile-optimized interactions
+- Optional AES-GCM E2EE upload/download flow
+- Secure share links and copy-to-clipboard controls for encrypted transfers
 - Insecure-context awareness in UI
 - Localtunnel/mobile testing logic
 - Auto-migrating backend container flow
@@ -121,7 +136,7 @@ Recent connectivity fix:
 
 ## Next Steps
 
-- Client-side AES-GCM encryption before upload streaming starts
+- Chunked browser encryption for very large files
 - Security hardening (replace default credentials with secret management)
 - Integration tests for streaming pipeline
 - Better local discovery (mDNS like `ghostdrop.local`)
@@ -156,8 +171,8 @@ ghostdrop
 │  │  │  ├─ db
 │  │  │  │  ├─ migrate.ts
 │  │  │  │  └─ migrations
-│  │  │  │     └─ 001_create_transfers.sql
-│  │  │  ├─ routes
+│  │  │  │     ├─ 001_create_transfers.sql
+│  │  │  │     └─ 002_add_encryption_metadata_to_transfers.sql
 │  │  │  ├─ server.ts
 │  │  │  ├─ services
 │  │  │  │  ├─ cleanup.ts
@@ -179,12 +194,8 @@ ghostdrop
 │     ├─ src
 │     │  ├─ app.css
 │     │  ├─ App.svelte
-│     │  ├─ assets
-│     │  │  ├─ hero.png
-│     │  │  ├─ svelte.svg
-│     │  │  └─ vite.svg
 │     │  ├─ lib
-│     │  │  └─ Counter.svelte
+│     │  │  └─ crypto.ts
 │     │  └─ main.ts
 │     ├─ svelte.config.js
 │     ├─ tsconfig.app.json
@@ -192,10 +203,14 @@ ghostdrop
 │     ├─ tsconfig.node.json
 │     └─ vite.config.ts
 ├─ Caddy.Dockerfile.staging
+├─ Caddy.Dockerfile.production
 ├─ caddyFile
+├─ Caddyfile.production
 ├─ Caddyfile.staging
+├─ compose.prod.yaml
 ├─ compose.staging.yaml
 ├─ compose.yaml
+├─ docs
 ├─ package.json
 ├─ packages
 ├─ pnpm-lock.yaml
