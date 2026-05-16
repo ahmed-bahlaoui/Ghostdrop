@@ -53,8 +53,6 @@ Core design goals:
 - Dockerized local staging environment (`compose.staging.yaml`) with auto-migrating backend startup flow.
 - TypeScript-first monorepo across frontend and backend.
 
-## Optional E2EE flow
-!["E2EE flow screenshot"](screenshot_2.png)
 
 ## Stack
 
@@ -76,7 +74,7 @@ Core design goals:
 
 ### Infrastructure:
 
-[![Icoziv Skills](https://i.icoziv.workers.dev/icons?i=docker)](https://github.com/thuongtruong109/icoziv)
+[![Icoziv Skills](https://i.icoziv.workers.dev/icons?i=docker,digitalocean)](https://github.com/thuongtruong109/icoziv)
 
 ## Architecture
 
@@ -89,11 +87,141 @@ Core design goals:
 - Redis (TTL/rate limiting)
 - MinIO (binary objects)
 
+## User Flows
+
+### Send a code-only transfer
+
+```mermaid
+sequenceDiagram
+    actor Sender
+    participant Web as Svelte app
+    participant API as Fastify API
+    participant Redis
+    participant DB as PostgreSQL
+    participant Store as MinIO
+
+    Sender->>Web: Choose file and transfer options
+    Web->>API: POST /transfers with metadata
+    API->>DB: Create transfer row
+    API->>Redis: Cache transfer:code:{code} with TTL
+    API-->>Web: Return transfer code and expiry
+    Web->>API: POST /transfers/{code}/upload with file stream
+    API->>Redis: Validate upload session
+    API->>Store: Stream object to bucket
+    Store-->>API: Upload complete
+    API-->>Web: Confirm upload
+    Web-->>Sender: Show share code
+```
+
+### Send an encrypted transfer
+
+```mermaid
+sequenceDiagram
+    actor Sender
+    participant Web as Svelte app
+    participant Crypto as Web Crypto API
+    participant API as Fastify API
+    participant Redis
+    participant DB as PostgreSQL
+    participant Store as MinIO
+
+    Sender->>Web: Enable E2EE and choose file
+    Web->>Crypto: Generate AES-GCM key and IV
+    Crypto-->>Web: Return ciphertext and public IV
+    Web->>API: POST /transfers with encrypted metadata
+    API->>DB: Store ciphertext metadata and IV
+    API->>Redis: Cache transfer:code:{code} with TTL
+    API-->>Web: Return transfer code and expiry
+    Web->>API: POST /transfers/{code}/upload with ciphertext stream
+    API->>Store: Stream encrypted object to bucket
+    API-->>Web: Confirm upload
+    Web-->>Sender: Show secure link or code plus decryption key
+```
+
+### Receive, peek, and download
+
+```mermaid
+sequenceDiagram
+    actor Receiver
+    participant Web as Svelte app
+    participant API as Fastify API
+    participant Redis
+    participant DB as PostgreSQL
+    participant Store as MinIO
+    participant Crypto as Web Crypto API
+
+    Receiver->>Web: Enter transfer code or open secure link
+    Web->>API: GET /transfers/{code}
+    API->>Redis: Validate transfer code
+    API->>DB: Read transfer metadata
+    API-->>Web: Return filename, size, expiry, downloads, encryption metadata
+    Web-->>Receiver: Show peek details
+    Receiver->>Web: Click Download
+    Web->>API: GET /transfers/{code}/download
+    API->>Redis: Validate transfer code
+    API->>DB: Check download limit
+    API->>Store: Read object stream
+    API->>DB: Increment download_count
+    Store-->>API: Stream file bytes
+    API-->>Web: Stream download response
+    alt Encrypted transfer
+        Web->>Crypto: Decrypt bytes with link/key and IV
+        Crypto-->>Web: Return plaintext file
+    end
+    Web-->>Receiver: Save file
+```
+
+### Expiration and cleanup
+
+```mermaid
+flowchart TD
+    A["Transfer created with expires_at and Redis TTL"] --> B{"Transfer still valid?"}
+    B -- "Yes" --> C["Code can resolve through Redis"]
+    C --> D["Metadata and object remain available"]
+    B -- "No" --> E["Redis TTL removes code lookup"]
+    E --> F["Cleanup worker runs every 5 minutes"]
+    F --> G["Find expired transfer rows in PostgreSQL"]
+    G --> H["Remove object from MinIO"]
+    H --> I["Delete stale Redis keys"]
+    I --> J["Delete expired metadata rows"]
+```
+
 ## Database
 
 #### Main table:
+```mermaid
+classDiagram
+    class transfers {
+        UUID id PK
+        CHAR(7) code UNIQUE
+        TEXT object_key
+        TEXT original_filename
+        TEXT mime_type
+        BIGINT size_bytes
+        BIGINT original_size_bytes nullable
+        TEXT encryption_algorithm
+        TEXT encryption_iv nullable
+        INTEGER download_count
+        INTEGER max_downloads nullable
+        TIMESTAMPTZ expires_at
+        TIMESTAMPTZ created_at
+    }
 
-- `transfers` (`id`, `code`, `object_key`, `original_filename`, `mime_type`, `size_bytes`, `original_size_bytes`, `encryption_algorithm`, `encryption_iv`, `download_count`, `max_downloads`, `expires_at`, `created_at`)
+    class constraints {
+        size_bytes >= 0
+        original_size_bytes IS NULL OR original_size_bytes >= 0
+        encryption_algorithm none requires encryption_iv NULL
+        encrypted transfers require encryption_iv
+    }
+
+    class indexes {
+        idx_transfers_code
+        idx_transfers_expires_at
+    }
+
+    transfers .. constraints : enforced by
+    transfers .. indexes : optimized by
+```
 
 Encryption metadata notes:
 
@@ -127,6 +255,7 @@ Encryption metadata notes:
 - Insecure-context awareness in UI
 - Localtunnel/mobile testing logic
 - Auto-migrating backend container flow
+- Security hardening (replace default credentials with secret management)
 
 #### Known issue:
 
@@ -140,7 +269,9 @@ Recent connectivity fix:
 ## Next Steps
 
 - Chunked browser encryption for very large files
-- Security hardening (replace default credentials with secret management)
+- Checking for malware using an API or local AV
+- Adding cloudflare proxy for network protection and anti-ddos protection
+- Work on SEO optimisations 
 - Integration tests for streaming pipeline
 - Better local discovery (mDNS like `ghostdrop.local`)
 - Complete UI with more features
@@ -160,72 +291,4 @@ Recent connectivity fix:
 
 - Production server setup, testing, maintenance, backups, and troubleshooting are documented in [`docs/server-ops.md`](docs/server-ops.md).
 
-## Project Structure
-```
-ghostdrop
-├─ .dockerignore
-├─ apps
-│  ├─ api
-│  │  ├─ Dockerfile
-│  │  ├─ package.json
-│  │  ├─ src
-│  │  │  ├─ config
-│  │  │  │  └─ env.ts
-│  │  │  ├─ db
-│  │  │  │  ├─ migrate.ts
-│  │  │  │  └─ migrations
-│  │  │  │     ├─ 001_create_transfers.sql
-│  │  │  │     └─ 002_add_encryption_metadata_to_transfers.sql
-│  │  │  ├─ routes
-│  │  │  ├─ server.ts
-│  │  │  ├─ services
-│  │  │  │  ├─ cleanup.ts
-│  │  │  │  ├─ pool.ts
-│  │  │  │  ├─ redis.ts
-│  │  │  │  ├─ storage.ts
-│  │  │  │  └─ transfers.ts
-│  │  │  └─ utils
-│  │  │     ├─ generate_minio_object_key.ts
-│  │  │     └─ generate_session_transfer_code.ts
-│  │  └─ tsconfig.json
-│  └─ web
-│     ├─ eslint.config.js
-│     ├─ index.html
-│     ├─ package.json
-│     ├─ public
-│     │  ├─ favicon-16.png
-│     │  ├─ favicon-32.png
-│     │  ├─ favicon.svg
-│     │  └─ icons.svg
-│     ├─ README.md
-│     ├─ src
-│     │  ├─ app.css
-│     │  ├─ App.svelte
-│     │  ├─ lib
-│     │  │  └─ crypto.ts
-│     │  └─ main.ts
-│     ├─ svelte.config.js
-│     ├─ tsconfig.app.json
-│     ├─ tsconfig.json
-│     ├─ tsconfig.node.json
-│     └─ vite.config.ts
-├─ Caddy.Dockerfile.production
-├─ Caddy.Dockerfile.staging
-├─ caddyFile
-├─ Caddyfile.production
-├─ Caddyfile.staging
-├─ compose.prod.yaml
-├─ compose.staging.yaml
-├─ compose.yaml
-├─ docs
-│  ├─ server-ops.md
-│  └─ test-production-locally.md
-├─ package.json
-├─ packages
-├─ pnpm-lock.yaml
-├─ pnpm-workspace.yaml
-├─ README.md
-├─ screenshot.png
-└─ screenshot_2.png
-```
 ## Built with ❤️ and a lot of ☕
