@@ -53,9 +53,10 @@
 		{ label: "5", value: 5 },
 		{ label: "10", value: 10 },
 	];
+	const transferCodeLength = 6;
 
 	// --- CONFIGURATION ---
-	const API_OVERRIDE = "";
+	const API_OVERRIDE = import.meta.env.VITE_API_URL ?? "";
 
 	const getApiUrl = () => {
 		if (typeof window === "undefined") return "http://localhost:3100";
@@ -65,13 +66,7 @@
 		if (paramApi) return paramApi;
 		if (API_OVERRIDE) return API_OVERRIDE;
 
-		// If we are in production (staging), use the relative /api path
-		// provided by the Caddy proxy
-		if (import.meta.env.PROD) {
-			return "/api";
-		}
-
-		return `http://${window.location.hostname}:3100`;
+		return "/api";
 	};
 
 	const API_URL = getApiUrl();
@@ -85,7 +80,7 @@
 		const transfer = params.get("transfer");
 		const key = params.get("key");
 
-		if (transfer) receiveCode = transfer.toUpperCase();
+		if (transfer) receiveCode = formatTransferCode(transfer);
 		if (key) receiveKey = key;
 	});
 
@@ -332,13 +327,13 @@
 	}
 
 	async function handlePeek() {
-		if (!receiveCode) return;
+		if (!hasCompleteReceiveCode()) return;
 
 		status = { type: "loading", message: "Fetching metadata..." };
 		fileMeta = null;
 
 		try {
-			const cleanCode = receiveCode.trim().toUpperCase();
+			const cleanCode = normalizeReceiveCode();
 			const metaRes = await fetch(`${API_URL}/transfers/${cleanCode}`, {
 				headers: headers,
 			});
@@ -362,12 +357,12 @@
 	}
 
 	async function handleDownload() {
-		if (!receiveCode) return;
+		if (!hasCompleteReceiveCode()) return;
 
 		status = { type: "loading", message: "Download starting..." };
 
 		try {
-			const cleanCode = receiveCode.trim().toUpperCase();
+			const cleanCode = normalizeReceiveCode();
 			const meta = await getTransferMetadata(cleanCode);
 			await downloadTransfer(cleanCode, meta);
 			resetReceiveState();
@@ -508,6 +503,50 @@
 				: `${window.location.origin}${window.location.pathname}`;
 		const params = new URLSearchParams({ transfer: code, key });
 		return `${baseUrl}#${params.toString()}`;
+	}
+
+	function stripTransferCode(value: string): string {
+		return value
+			.replace(/[^a-z0-9]/gi, "")
+			.slice(0, transferCodeLength)
+			.toUpperCase();
+	}
+
+	function formatTransferCode(value: string): string {
+		const code = stripTransferCode(value);
+		if (code.length <= 3) return code;
+		return `${code.slice(0, 3)}-${code.slice(3)}`;
+	}
+
+	function normalizeReceiveCode(): string {
+		return formatTransferCode(receiveCode);
+	}
+
+	function hasCompleteReceiveCode(): boolean {
+		return stripTransferCode(receiveCode).length === transferCodeLength;
+	}
+
+	function receiveCodeCharacters(): string[] {
+		const code = stripTransferCode(receiveCode);
+		return Array.from(
+			{ length: transferCodeLength },
+			(_, index) => code[index] ?? "",
+		);
+	}
+
+	function handleReceiveCodeInput(e: Event) {
+		receiveCode = formatTransferCode((e.currentTarget as HTMLInputElement).value);
+	}
+
+	function handleReceiveCodeKeydown(e: KeyboardEvent) {
+		if (e.key === "Enter") {
+			handlePeek();
+			return;
+		}
+
+		if (e.key.length === 1 && !/^[a-z0-9]$/i.test(e.key)) {
+			e.preventDefault();
+		}
 	}
 
 	async function handleViewNote() {
@@ -1007,14 +1046,40 @@
 					</h2>
 
 					<div class="flex flex-col gap-4">
-						<input
-							type="text"
-							bind:value={receiveCode}
-							onkeydown={(e) =>
-								e.key === "Enter" && handlePeek()}
-							placeholder="ENTER TRANSFER CODE"
-							class="w-full bg-slate-100 py-5 px-4 rounded-2xl outline-none focus:ring-4 focus:ring-rose-100 text-2xl font-mono font-black text-center placeholder:text-slate-300 uppercase tracking-widest transition-all"
-						/>
+						<label class="relative block">
+							<span class="sr-only">Enter transfer code</span>
+							<input
+								type="text"
+								value={receiveCode}
+								oninput={handleReceiveCodeInput}
+								onkeydown={handleReceiveCodeKeydown}
+								inputmode="text"
+								autocomplete="one-time-code"
+								autocapitalize="characters"
+								spellcheck="false"
+								class="peer absolute inset-0 z-10 h-full w-full cursor-text opacity-0"
+								aria-label="Enter transfer code"
+							/>
+							<div
+								aria-hidden="true"
+								class="grid grid-cols-[repeat(3,minmax(0,1fr))_auto_repeat(3,minmax(0,1fr))] items-center gap-2 sm:gap-3"
+							>
+								{#each receiveCodeCharacters() as character, index (index)}
+									{#if index === 3}
+										<span
+											class="h-1 w-3 rounded-full bg-slate-300 sm:w-4"
+										></span>
+									{/if}
+									<div
+										class="flex h-12 min-w-0 items-center justify-center rounded-2xl border-2 bg-slate-50 text-xl font-black font-mono text-slate-800 shadow-inner transition-all sm:h-14 sm:text-2xl {character
+											? 'border-slate-300'
+											: 'border-slate-200'} peer-focus:border-rose-400 peer-focus:bg-white peer-focus:shadow-rose-100"
+									>
+										{character}
+									</div>
+								{/each}
+							</div>
+						</label>
 						<input
 							type="text"
 							bind:value={receiveKey}
@@ -1026,7 +1091,7 @@
 						<div class="flex gap-3">
 							<button
 								onclick={handlePeek}
-								disabled={!receiveCode.trim() ||
+								disabled={!hasCompleteReceiveCode() ||
 									status.type === "loading"}
 								class="flex-1 py-5 bg-emerald-500 text-white rounded-2xl font-black text-lg hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-200 active:bg-emerald-700 uppercase tracking-tighter"
 							>
@@ -1034,7 +1099,7 @@
 							</button>
 							<button
 								onclick={handleDownload}
-								disabled={!receiveCode.trim() ||
+								disabled={!hasCompleteReceiveCode() ||
 									status.type === "loading"}
 								class="flex-1 py-5 bg-rose-500 text-white rounded-2xl font-black text-lg hover:bg-rose-600 transition-all shadow-lg shadow-rose-200 active:bg-rose-700 uppercase tracking-tighter"
 							>
