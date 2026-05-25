@@ -84,6 +84,16 @@
 		if (key) receiveKey = key;
 	});
 
+	$effect(() => {
+		if (typeof document === "undefined") return;
+		const robots = document.querySelector('meta[name="robots"]');
+		if (!robots) return;
+		robots.setAttribute(
+			"content",
+			view === "main" ? "index, follow" : "noindex, nofollow",
+		);
+	});
+
 	// Localtunnel/Ngrok bypass header
 	const headers = {
 		"Bypass-Tunnel-Reminder": "true",
@@ -710,10 +720,8 @@
 			>
 				G
 			</div>
-			<span
-				class="text-xl font-bold tracking-tight text-slate-800 uppercase"
-			>
-				ghostdrop
+			<span class="text-xl font-bold tracking-tight text-slate-800">
+				GhostDrop
 			</span>
 			<span
 				class="rounded-full bg-emerald-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-700"
@@ -879,6 +887,18 @@
 			{/if}
 
 			{#if view === "main"}
+				<section class="text-center px-2">
+					<h1
+						class="text-2xl md:text-3xl font-black tracking-tight text-slate-800"
+					>
+						Anonymous temporary file sharing
+					</h1>
+					<p class="mt-2 text-sm md:text-base text-slate-600 max-w-xl mx-auto">
+						Upload a file, share a short code, and let anyone download it —
+						encrypted in the browser, no account required.
+					</p>
+				</section>
+
 				<div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
 				<!-- Send Card -->
 				<div
