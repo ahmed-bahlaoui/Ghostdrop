@@ -70,6 +70,8 @@
 	};
 
 	const API_URL = getApiUrl();
+	const showApiConnectionBadge =
+		import.meta.env.DEV || import.meta.env.VITE_SHOW_API_BADGE === "true";
 
 	$effect(() => {
 		if (parsedShareFragment || typeof window === "undefined") return;
@@ -735,18 +737,20 @@
 		class="flex-1 flex flex-col items-center justify-start p-4 md:p-12 overflow-y-auto"
 	>
 		<div class="flex flex-col gap-6 w-full max-w-5xl">
-			<!-- Connection Badge -->
-			<div
-				class="flex justify-between items-center px-1 text-[10px] font-black uppercase tracking-widest text-slate-400"
-			>
-				<span>API CONNECTION</span>
-				<span class="text-rose-500"
-					>{API_URL.replace("http://", "").replace(
-						"https://",
-						"",
-					)}</span
+			{#if showApiConnectionBadge}
+				<div
+					class="flex justify-between items-center px-1 text-[10px] font-black uppercase tracking-widest text-slate-400"
+					aria-hidden="true"
 				>
-			</div>
+					<span>API CONNECTION</span>
+					<span class="text-rose-500"
+						>{API_URL.replace("http://", "").replace(
+							"https://",
+							"",
+						)}</span
+					>
+				</div>
+			{/if}
 
 			<!-- Status Message -->
 			{#if status.type !== "idle"}

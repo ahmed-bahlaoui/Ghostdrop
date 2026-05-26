@@ -4,8 +4,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" type="image/png" href="favicon-32.png" sizes="32x32" />
-  <link rel="icon" type="image/png" href="favicon-16.png" sizes="16x16" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" type="image/png" href="/favicon-32.png" sizes="32x32" />
+  <link rel="icon" type="image/png" href="/favicon-16.png" sizes="16x16" />
   <meta name="description"
     content="Send files anonymously with a short code. Temporary, encrypted transfers expire automatically — no account required." />
   <meta name="robots" content="index, follow" />
@@ -52,6 +53,16 @@
 </head>
 
 <body>
+  <noscript>
+    <main style="max-width: 36rem; margin: 2rem auto; padding: 0 1rem; font-family: system-ui, sans-serif; color: #1e293b;">
+      <h1 style="font-size: 1.5rem; font-weight: 800;">Anonymous temporary file sharing</h1>
+      <p style="margin-top: 0.5rem; line-height: 1.5; color: #475569;">
+        Send files anonymously with a short code. Temporary, encrypted transfers expire
+        automatically — no account required.
+      </p>
+      <p style="margin-top: 1rem; color: #64748b;">Enable JavaScript to upload and download files.</p>
+    </main>
+  </noscript>
   <div id="app"></div>
   <script type="module" src="/src/main.ts"></script>
 </body>
