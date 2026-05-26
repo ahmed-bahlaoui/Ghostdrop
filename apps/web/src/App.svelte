@@ -39,6 +39,14 @@
 
 	let fileInput = $state<HTMLInputElement>();
 	let parsedShareFragment = false;
+	let loadedShareTargetFile = false;
+
+	type SharedFileRecord = {
+		id: "latest";
+		file: File;
+		ignoredFileCount: number;
+		receivedAt: number;
+	};
 
 	const expiryOptions = [
 		{ label: "1 Hour", value: 60 },
@@ -54,6 +62,9 @@
 		{ label: "10", value: 10 },
 	];
 	const transferCodeLength = 6;
+	const shareTargetDbName = "ghostdrop-share-target";
+	const shareTargetStore = "shares";
+	const shareTargetKey = "latest";
 
 	// --- CONFIGURATION ---
 	const API_OVERRIDE = import.meta.env.VITE_API_URL ?? "";
@@ -96,6 +107,16 @@
 		);
 	});
 
+	$effect(() => {
+		if (loadedShareTargetFile || typeof window === "undefined") return;
+
+		const params = new URLSearchParams(window.location.search);
+		if (!params.has("shared")) return;
+
+		loadedShareTargetFile = true;
+		void loadSharedFileFromAndroid();
+	});
+
 	// Localtunnel/Ngrok bypass header
 	const headers = {
 		"Bypass-Tunnel-Reminder": "true",
@@ -134,6 +155,89 @@
 		revokeImagePreviewUrl();
 		status = { type: "idle", message: "" };
 		if (fileInput) fileInput.value = "";
+	}
+
+	async function loadSharedFileFromAndroid() {
+		try {
+			const record = await consumeSharedFileRecord();
+			if (!record?.file) {
+				status = {
+					type: "error",
+					message: "No shared file was received from Android",
+				};
+				clearShareTargetParams();
+				return;
+			}
+
+			selectFile(record.file);
+			status = {
+				type: record.ignoredFileCount > 0 ? "error" : "success",
+				message:
+					record.ignoredFileCount > 0
+						? "Only one file can be sent at a time. GhostDrop loaded the first shared file."
+						: "Shared file loaded. Review the options, then send.",
+			};
+		} catch (err: unknown) {
+			console.error("Android share target error:", err);
+			status = {
+				type: "error",
+				message:
+					err instanceof Error
+						? err.message
+						: "Could not load the shared file",
+			};
+		} finally {
+			clearShareTargetParams();
+		}
+	}
+
+	function clearShareTargetParams() {
+		const url = new URL(window.location.href);
+		url.searchParams.delete("shared");
+		url.searchParams.delete("ignored");
+		window.history.replaceState(
+			{},
+			document.title,
+			`${url.pathname}${url.search}${url.hash}`,
+		);
+	}
+
+	async function consumeSharedFileRecord(): Promise<SharedFileRecord | null> {
+		const db = await openShareTargetDb();
+
+		try {
+			const record = await new Promise<SharedFileRecord | undefined>(
+				(resolve, reject) => {
+					const transaction = db.transaction(shareTargetStore, "readwrite");
+					const store = transaction.objectStore(shareTargetStore);
+					const getRequest = store.get(shareTargetKey);
+
+					getRequest.onsuccess = () => {
+						const value = getRequest.result as SharedFileRecord | undefined;
+						if (value) store.delete(shareTargetKey);
+						resolve(value);
+					};
+					getRequest.onerror = () => reject(getRequest.error);
+					transaction.onerror = () => reject(transaction.error);
+				},
+			);
+
+			return record ?? null;
+		} finally {
+			db.close();
+		}
+	}
+
+	function openShareTargetDb(): Promise<IDBDatabase> {
+		return new Promise((resolve, reject) => {
+			const request = indexedDB.open(shareTargetDbName, 1);
+
+			request.onupgradeneeded = () => {
+				request.result.createObjectStore(shareTargetStore, { keyPath: "id" });
+			};
+			request.onsuccess = () => resolve(request.result);
+			request.onerror = () => reject(request.error);
+		});
 	}
 
 	function selectClipboardImage(blob: Blob, mimeType: string) {
