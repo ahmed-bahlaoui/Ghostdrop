@@ -246,59 +246,7 @@ Encryption metadata notes:
 
 ## Roadmap
 
-```mermaid
-gantt
-    title GhostDrop Development Roadmap
-    dateFormat  YYYY-MM-DD
-    axisFormat  %b %Y
-
-    section Foundation
-    Backend infrastructure (API, DB, Redis, MinIO)    :done, 2026-03-01, 2026-03-21
-    Streaming upload / download pipeline               :done, 2026-03-22, 2026-04-04
-    Transfer codes & expiry & download limits          :done, 2026-04-05, 2026-04-11
-    Dockerized staging & production compose            :done, 2026-04-12, 2026-04-18
-
-    section Web App v1
-    Svelte 5 UI (send / receive / peek)               :done, 2026-04-19, 2026-04-30
-    Clipboard paste (text + image)                     :done, 2026-05-01, 2026-05-04
-    Custom favicon & PWA icons                         :done, 2026-05-05, 2026-05-05
-
-    section Security
-    Optional AES-GCM E2EE encryption                   :done, 2026-05-06, 2026-05-14
-    Secure share links (URL fragments)                 :done, 2026-05-15, 2026-05-16
-    Rate limiting & CORS hardening                     :done, 2026-05-17, 2026-05-19
-
-    section Mobile & SEO
-    Android PWA + Web Share Target                     :done, 2026-05-20, 2026-05-22
-    SEO meta / robots / sitemap                        :done, 2026-05-23, 2026-05-25
-    Production security headers & bug fixes            :done, 2026-05-25, 2026-05-26
-
-    section CLI Tool
-    CLI research & design                              :active, 2026-05-27, 2026-06-07
-    CLI v0.1 (upload / download / peek)                :2026-06-08, 2026-06-28
-    CLI v1.0 (E2EE, progress bars, config file)        :2026-07-15, 2026-08-04
-
-    section UI Makeover
-    Design system & component library                  :2026-06-15, 2026-07-05
-    New landing page & dark mode                       :2026-07-06, 2026-07-26
-    Drag & drop, multi-file, progress indicators       :2026-07-27, 2026-08-16
-
-    section SEO & Infra
-    Advanced SEO (structured data, OG, performance)    :2026-07-01, 2026-07-21
-    Cloudflare proxy & DDoS protection                 :2026-08-01, 2026-08-14
-    Chunked encryption for large files                 :2026-08-15, 2026-09-04
-
-    section Quality
-    Malware scanning integration                       :2026-09-01, 2026-09-14
-    Integration tests (streaming pipeline)             :2026-09-15, 2026-10-05
-    CI/CD pipeline (GitHub Actions)                    :2026-10-01, 2026-10-14
-
-    section Polish
-    Monitoring (Prometheus + health alerts)            :2026-10-15, 2026-10-28
-    File integrity checksums                           :2026-10-29, 2026-11-04
-    mDNS discovery (ghostdrop.local)                   :2026-11-05, 2026-11-18
-    Performance audit & optimization                   :2026-11-19, 2026-12-04
-```
+<img width="1099" height="973" alt="image" src="https://github.com/user-attachments/assets/e387d30c-ff79-46ff-b659-f6f427655387" />
 
 ### Completed
 
