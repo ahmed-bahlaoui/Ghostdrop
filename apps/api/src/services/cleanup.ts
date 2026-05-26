@@ -2,54 +2,81 @@ import redis from "./redis.js";
 import { deleteObject } from "./storage.js";
 import { deleteTransfer, getExpiredTransfers } from "./transfers.js";
 
+const CLEANUP_BATCH_SIZE = 100;
+
+let running = false;
+let timer: ReturnType<typeof setTimeout> | null = null;
+
 /**
- * The Cleanup Worker:
- * Periodically sweeps the database for expired records,
- * removes their files from MinIO, and then purges the DB metadata.
+ * Runs a single cleanup sweep, processing transfers in batches.
  */
-export async function runCleanup(): Promise<void> {
-	console.log("[Cleanup] Starting expiration sweep...");
-
+async function runCleanupSweep(): Promise<void> {
 	try {
-		const expired = await getExpiredTransfers();
+		let totalCleaned = 0;
 
-		if (expired.length === 0) {
-			console.log("[Cleanup] No expired transfers found.");
-			return;
+		while (true) {
+			const expired = await getExpiredTransfers(CLEANUP_BATCH_SIZE);
+
+			if (expired.length === 0) {
+				break;
+			}
+
+			for (const transfer of expired) {
+				console.log(`[Cleanup] Cleaning up transfer: ${transfer.code}`);
+
+				const deleted = await deleteObject(transfer.object_key);
+				if (!deleted) {
+					console.warn(`[Cleanup] Skipping DB/Redis cleanup for ${transfer.code} — MinIO delete failed`);
+					continue;
+				}
+
+				await deleteTransfer(transfer.id);
+				await redis.del(`transfer:code:${transfer.code}`);
+				totalCleaned++;
+
+				console.log(`[Cleanup] ✓ Transfer ${transfer.code} fully purged.`);
+			}
 		}
 
-		console.log(`[Cleanup] Found ${expired.length} expired transfer(s).`);
-
-		for (const transfer of expired) {
-			console.log(`[Cleanup] Cleaning up transfer: ${transfer.code}`);
-
-			// 1. Delete from MinIO
-			await deleteObject(transfer.object_key);
-
-			// 2. Delete from Database
-			await deleteTransfer(transfer.id);
-
-			// 3. Delete from Redis
-			await redis.del(`transfer:code:${transfer.code}`);
-
-			console.log(`[Cleanup] ✓ Transfer ${transfer.code} fully purged.`);
+		if (totalCleaned > 0) {
+			console.log(`[Cleanup] Sweep complete. Cleaned ${totalCleaned} transfer(s).`);
 		}
 	} catch (err) {
 		console.error("[Cleanup] Fatal error during cleanup sweep:", err);
 	}
 }
 
+function scheduleNextRun(intervalMs: number) {
+	timer = setTimeout(async () => {
+		if (!running) {
+			running = true;
+			try {
+				await runCleanupSweep();
+			} catch {
+				// already logged in runCleanupSweep
+			}
+			running = false;
+		}
+		scheduleNextRun(intervalMs);
+	}, intervalMs);
+}
+
 /**
  * Starts the cleanup worker on a defined interval.
+ * Uses setTimeout chaining to prevent overlapping runs.
  */
 export function startCleanupWorker(intervalMs: number = 60000 * 5) {
 	console.log(
 		`[Cleanup] Worker started. Interval: ${intervalMs / 60000} minutes`,
 	);
 
-	// Run immediately on start
-	runCleanup();
+	runCleanupSweep();
+	scheduleNextRun(intervalMs);
+}
 
-	// Then run periodically
-	setInterval(runCleanup, intervalMs);
+export function stopCleanupWorker() {
+	if (timer) {
+		clearTimeout(timer);
+		timer = null;
+	}
 }

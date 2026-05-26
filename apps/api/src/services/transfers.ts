@@ -112,11 +112,12 @@ export async function markTransferUploaded(id: string): Promise<void> {
 }
 
 /**
- * Finds all transfers that have passed their expiration date.
+ * Finds transfers that have passed their expiration date.
+ * Batched with LIMIT to avoid memory exhaustion on large backlogs.
  */
-export async function getExpiredTransfers(): Promise<Transfer[]> {
-	const query = "SELECT * FROM transfers WHERE expires_at < NOW()";
-	const result = await pool.query<Transfer>(query);
+export async function getExpiredTransfers(limit: number = 100): Promise<Transfer[]> {
+	const query = "SELECT * FROM transfers WHERE expires_at < NOW() LIMIT $1";
+	const result = await pool.query<Transfer>(query, [limit]);
 	return result.rows;
 }
 

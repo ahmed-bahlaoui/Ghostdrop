@@ -20,6 +20,10 @@ RUN pnpm run build
 FROM node:22-slim
 WORKDIR /app/apps/api
 
+# Install tini for proper signal handling
+RUN apt-get update && apt-get install -y --no-install-recommends tini curl && \
+    rm -rf /var/lib/apt/lists/*
+
 # Copy only the compiled code and package.json
 COPY --from=builder /app/apps/api/dist ./dist
 COPY --from=builder /app/apps/api/src/db/migrations ./dist/db/migrations
@@ -34,5 +38,13 @@ ENV PORT=3100
 
 EXPOSE 3100
 
-# Start the app
+# Run as non-root
+USER node
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:3100/health || exit 1
+
+# Start the app with tini for signal forwarding
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["npm", "run", "prod"]

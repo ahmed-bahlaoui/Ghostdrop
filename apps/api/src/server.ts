@@ -5,7 +5,7 @@ import rateLimit from "@fastify/rate-limit";
 import Fastify from "fastify";
 import { z } from "zod";
 import { getEnv } from "./config/env.js";
-import { startCleanupWorker } from "./services/cleanup.js";
+import { startCleanupWorker, stopCleanupWorker } from "./services/cleanup.js";
 import redis from "./services/redis.js";
 import minio, { BUCKET_NAME, initializeStorage } from "./services/storage.js";
 import {
@@ -114,7 +114,10 @@ fastify.register(multipart, {
 const CreateTransferSchema = z.object({
 	filename: z.string().min(1).max(255),
 	size: z.number().int().positive().max(MAX_FILE_SIZE_BYTES),
-	mimeType: z.string().min(1),
+	mimeType: z.string().min(1).regex(
+		/^[a-z0-9][a-z0-9+.-]*\/[a-z0-9][a-z0-9+.-]*$/i,
+		"Invalid MIME type format",
+	),
 	maxDownloads: z.number().int().positive().max(MAX_DOWNLOADS).optional().default(1),
 	expiresInMinutes: z.number().int().positive().max(MAX_EXPIRES_IN_MINUTES).optional().default(60),
 	originalSize: z.number().int().positive().max(MAX_FILE_SIZE_BYTES).optional(),
@@ -148,6 +151,14 @@ class UploadSizeMismatchError extends Error {
 		);
 		this.name = "UploadSizeMismatchError";
 	}
+}
+
+function sanitizeFilename(filename: string): string {
+	return filename
+		.replace(/[\\"]/g, "")
+		.replace(/[\r\n]/g, " ")
+		.trim()
+		.slice(0, 255);
 }
 
 fastify.get("/", async () => {
@@ -402,7 +413,7 @@ fastify.get("/transfers/:code/download", async (request, reply) => {
 		// Force download with original filename
 		reply.header(
 			"Content-Disposition",
-			`attachment; filename="${transfer.original_filename}"`,
+			`attachment; filename="${sanitizeFilename(transfer.original_filename)}"`,
 		);
 
 		// 5. Pipe to client
@@ -438,7 +449,7 @@ fastify.get("/transfers/:code/preview", async (request, reply) => {
 		reply.header("Content-Length", transfer.size_bytes);
 		reply.header(
 			"Content-Disposition",
-			`inline; filename="${transfer.original_filename}"`,
+			`inline; filename="${sanitizeFilename(transfer.original_filename)}"`,
 		);
 
 		return reply.send(stream);
@@ -478,3 +489,19 @@ const start = async () => {
 };
 
 start();
+
+const gracefulShutdown = async (signal: string) => {
+	console.log(`Received ${signal}. Starting graceful shutdown...`);
+	stopCleanupWorker();
+	try {
+		await fastify.close();
+		console.log("Server closed.");
+		process.exit(0);
+	} catch (err) {
+		console.error("Error during graceful shutdown:", err);
+		process.exit(1);
+	}
+};
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));

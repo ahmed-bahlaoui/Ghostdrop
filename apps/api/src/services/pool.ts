@@ -9,4 +9,8 @@ const pool = new Pool({
 	database: requireEnv("POSTGRES_DB"),
 });
 
+pool.on("error", (err) => {
+	console.error("[pool] Unexpected pool error. The database may be unreachable:", err);
+});
+
 export default pool;
