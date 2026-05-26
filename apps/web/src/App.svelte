@@ -1,814 +1,803 @@
 <script lang="ts">
-	import { decryptFile, encryptFile } from "./lib/crypto.js";
+import { decryptFile, encryptFile } from "./lib/crypto.js";
 
-	type TransferMetadata = {
-		filename: string;
-		size: number;
-		originalSize: number | null;
-		mimeType: string;
-		downloadCount: number;
-		maxDownloads: number;
-		expiresAt: string;
-		encryption: {
-			algorithm: "none" | "AES-GCM-256";
-			iv: string | null;
-		};
+type TransferMetadata = {
+	filename: string;
+	size: number;
+	originalSize: number | null;
+	mimeType: string;
+	downloadCount: number;
+	maxDownloads: number;
+	expiresAt: string;
+	encryption: {
+		algorithm: "none" | "AES-GCM-256";
+		iv: string | null;
 	};
+};
 
-	let selectedFile = $state<File | null>(null);
-	let receiveCode = $state("");
-	let receiveKey = $state("");
-	let peekedCode = $state("");
-	let shareLink = $state("");
-	let shareKey = $state("");
-	let copiedShareLink = $state(false);
-	let copiedShareKey = $state(false);
-	let endToEndEncryption = $state(false);
-	let expiresInMinutes = $state(60);
-	let maxDownloads = $state(1);
-	let view = $state<"main" | "peek" | "note" | "image">("main");
-	let noteContent = $state("");
-	let noteCopied = $state(false);
-	let imagePreviewUrl = $state("");
-	let fileMeta = $state<TransferMetadata | null>(null);
-	let status = $state<{
-		type: "idle" | "loading" | "success" | "error";
-		message: string;
-		code?: string;
-	}>({ type: "idle", message: "" });
+let selectedFile = $state<File | null>(null);
+let receiveCode = $state("");
+let receiveKey = $state("");
+let peekedCode = $state("");
+let shareLink = $state("");
+let shareKey = $state("");
+let copiedShareLink = $state(false);
+let copiedShareKey = $state(false);
+let endToEndEncryption = $state(false);
+let expiresInMinutes = $state(60);
+let maxDownloads = $state(1);
+let view = $state<"main" | "peek" | "note" | "image">("main");
+let noteContent = $state("");
+let noteCopied = $state(false);
+let imagePreviewUrl = $state("");
+let fileMeta = $state<TransferMetadata | null>(null);
+let status = $state<{
+	type: "idle" | "loading" | "success" | "error";
+	message: string;
+	code?: string;
+}>({ type: "idle", message: "" });
 
-	let fileInput = $state<HTMLInputElement>();
-	let parsedShareFragment = false;
-	let loadedShareTargetFile = false;
+let fileInput = $state<HTMLInputElement>();
+let parsedShareFragment = false;
+let loadedShareTargetFile = false;
 
-	type SharedFileRecord = {
-		id: "latest";
-		file: File;
-		ignoredFileCount: number;
-		receivedAt: number;
-	};
+type SharedFileRecord = {
+	id: "latest";
+	file: File;
+	ignoredFileCount: number;
+	receivedAt: number;
+};
 
-	const expiryOptions = [
-		{ label: "1 Hour", value: 60 },
-		{ label: "1 Day", value: 1440 },
-		{ label: "3 Days", value: 4320 },
-		{ label: "7 Days", value: 10080 },
-	];
+const expiryOptions = [
+	{ label: "1 Hour", value: 60 },
+	{ label: "1 Day", value: 1440 },
+	{ label: "3 Days", value: 4320 },
+	{ label: "7 Days", value: 10080 },
+];
 
-	const downloadOptions = [
-		{ label: "1", value: 1 },
-		{ label: "3", value: 3 },
-		{ label: "5", value: 5 },
-		{ label: "10", value: 10 },
-	];
-	const transferCodeLength = 6;
-	const shareTargetDbName = "ghostdrop-share-target";
-	const shareTargetStore = "shares";
-	const shareTargetKey = "latest";
+const downloadOptions = [
+	{ label: "1", value: 1 },
+	{ label: "3", value: 3 },
+	{ label: "5", value: 5 },
+	{ label: "10", value: 10 },
+];
+const transferCodeLength = 6;
+const shareTargetDbName = "ghostdrop-share-target";
+const shareTargetStore = "shares";
+const shareTargetKey = "latest";
 
-	// --- CONFIGURATION ---
-	const API_OVERRIDE = import.meta.env.VITE_API_URL ?? "";
+// --- CONFIGURATION ---
+const API_OVERRIDE = import.meta.env.VITE_API_URL ?? "";
 
-	const getApiUrl = () => {
-		if (typeof window === "undefined") return "http://localhost:3100";
+const getApiUrl = () => {
+	if (typeof window === "undefined") return "http://localhost:3100";
 
-		const params = new URLSearchParams(window.location.search);
-		const paramApi = params.get("api");
-		if (paramApi) return paramApi;
-		if (API_OVERRIDE) return API_OVERRIDE;
+	const params = new URLSearchParams(window.location.search);
+	const paramApi = params.get("api");
+	if (paramApi) return paramApi;
+	if (API_OVERRIDE) return API_OVERRIDE;
 
-		return "/api";
-	};
+	return "/api";
+};
 
-	const API_URL = getApiUrl();
-	const showApiConnectionBadge =
-		import.meta.env.DEV || import.meta.env.VITE_SHOW_API_BADGE === "true";
+const API_URL = getApiUrl();
+const showApiConnectionBadge =
+	import.meta.env.DEV || import.meta.env.VITE_SHOW_API_BADGE === "true";
 
-	$effect(() => {
-		if (parsedShareFragment || typeof window === "undefined") return;
+$effect(() => {
+	if (parsedShareFragment || typeof window === "undefined") return;
 
-		parsedShareFragment = true;
-		const fragment = window.location.hash.replace(/^#\/?/, "");
-		const params = new URLSearchParams(fragment);
-		const transfer = params.get("transfer");
-		const key = params.get("key");
+	parsedShareFragment = true;
+	const fragment = window.location.hash.replace(/^#\/?/, "");
+	const params = new URLSearchParams(fragment);
+	const transfer = params.get("transfer");
+	const key = params.get("key");
 
-		if (transfer) receiveCode = formatTransferCode(transfer);
-		if (key) receiveKey = key;
-	});
+	if (transfer) receiveCode = formatTransferCode(transfer);
+	if (key) receiveKey = key;
+});
 
-	$effect(() => {
-		if (typeof document === "undefined") return;
-		const robots = document.querySelector('meta[name="robots"]');
-		if (!robots) return;
-		robots.setAttribute(
-			"content",
-			view === "main" ? "index, follow" : "noindex, nofollow",
-		);
-	});
+$effect(() => {
+	if (typeof document === "undefined") return;
+	const robots = document.querySelector('meta[name="robots"]');
+	if (!robots) return;
+	robots.setAttribute(
+		"content",
+		view === "main" ? "index, follow" : "noindex, nofollow",
+	);
+});
 
-	$effect(() => {
-		if (loadedShareTargetFile || typeof window === "undefined") return;
+$effect(() => {
+	if (loadedShareTargetFile || typeof window === "undefined") return;
 
-		const params = new URLSearchParams(window.location.search);
-		if (!params.has("shared")) return;
+	const params = new URLSearchParams(window.location.search);
+	if (!params.has("shared")) return;
 
-		loadedShareTargetFile = true;
-		void loadSharedFileFromAndroid();
-	});
+	loadedShareTargetFile = true;
+	void loadSharedFileFromAndroid();
+});
 
-	// Localtunnel/Ngrok bypass header
-	const headers = {
-		"Bypass-Tunnel-Reminder": "true",
-	};
-	// ---------------------
+// Localtunnel/Ngrok bypass header
+const headers = {
+	"Bypass-Tunnel-Reminder": "true",
+};
+// ---------------------
 
-	function handleFileSelect(e: Event) {
-		const target = e.target as HTMLInputElement;
-		const file = target.files?.[0];
-		if (file) {
-			selectFile(file);
-		}
+function handleFileSelect(e: Event) {
+	const target = e.target as HTMLInputElement;
+	const file = target.files?.[0];
+	if (file) {
+		selectFile(file);
 	}
+}
 
-	function getImageFilename(mimeType: string): string {
-		const extension = mimeType.split("/")[1]?.replace("jpeg", "jpg");
-		return extension
-			? `ghostdrop-clipboard.${extension}`
-			: "ghostdrop-clipboard-image";
+function getImageFilename(mimeType: string): string {
+	const extension = mimeType.split("/")[1]?.replace("jpeg", "jpg");
+	return extension
+		? `ghostdrop-clipboard.${extension}`
+		: "ghostdrop-clipboard-image";
+}
+
+function revokeImagePreviewUrl() {
+	if (imagePreviewUrl) {
+		URL.revokeObjectURL(imagePreviewUrl);
+		imagePreviewUrl = "";
 	}
+}
 
-	function revokeImagePreviewUrl() {
-		if (imagePreviewUrl) {
-			URL.revokeObjectURL(imagePreviewUrl);
-			imagePreviewUrl = "";
-		}
-	}
+function selectFile(file: File) {
+	selectedFile = file;
+	noteContent = "";
+	shareLink = "";
+	shareKey = "";
+	copiedShareLink = false;
+	copiedShareKey = false;
+	revokeImagePreviewUrl();
+	status = { type: "idle", message: "" };
+	if (fileInput) fileInput.value = "";
+}
 
-	function selectFile(file: File) {
-		selectedFile = file;
-		noteContent = "";
-		shareLink = "";
-		shareKey = "";
-		copiedShareLink = false;
-		copiedShareKey = false;
-		revokeImagePreviewUrl();
-		status = { type: "idle", message: "" };
-		if (fileInput) fileInput.value = "";
-	}
-
-	async function loadSharedFileFromAndroid() {
-		try {
-			const record = await consumeSharedFileRecord();
-			if (!record?.file) {
-				status = {
-					type: "error",
-					message: "No shared file was received from Android",
-				};
-				clearShareTargetParams();
-				return;
-			}
-
-			selectFile(record.file);
-			status = {
-				type: record.ignoredFileCount > 0 ? "error" : "success",
-				message:
-					record.ignoredFileCount > 0
-						? "Only one file can be sent at a time. GhostDrop loaded the first shared file."
-						: "Shared file loaded. Review the options, then send.",
-			};
-		} catch (err: unknown) {
-			console.error("Android share target error:", err);
+async function loadSharedFileFromAndroid() {
+	try {
+		const record = await consumeSharedFileRecord();
+		if (!record?.file) {
 			status = {
 				type: "error",
-				message:
-					err instanceof Error
-						? err.message
-						: "Could not load the shared file",
+				message: "No shared file was received from Android",
 			};
-		} finally {
 			clearShareTargetParams();
+			return;
 		}
-	}
 
-	function clearShareTargetParams() {
-		const url = new URL(window.location.href);
-		url.searchParams.delete("shared");
-		url.searchParams.delete("ignored");
-		window.history.replaceState(
-			{},
-			document.title,
-			`${url.pathname}${url.search}${url.hash}`,
+		selectFile(record.file);
+		status = {
+			type: record.ignoredFileCount > 0 ? "error" : "success",
+			message:
+				record.ignoredFileCount > 0
+					? "Only one file can be sent at a time. GhostDrop loaded the first shared file."
+					: "Shared file loaded. Review the options, then send.",
+		};
+	} catch (err: unknown) {
+		console.error("Android share target error:", err);
+		status = {
+			type: "error",
+			message:
+				err instanceof Error ? err.message : "Could not load the shared file",
+		};
+	} finally {
+		clearShareTargetParams();
+	}
+}
+
+function clearShareTargetParams() {
+	const url = new URL(window.location.href);
+	url.searchParams.delete("shared");
+	url.searchParams.delete("ignored");
+	window.history.replaceState(
+		{},
+		document.title,
+		`${url.pathname}${url.search}${url.hash}`,
+	);
+}
+
+async function consumeSharedFileRecord(): Promise<SharedFileRecord | null> {
+	const db = await openShareTargetDb();
+
+	try {
+		const record = await new Promise<SharedFileRecord | undefined>(
+			(resolve, reject) => {
+				const transaction = db.transaction(shareTargetStore, "readwrite");
+				const store = transaction.objectStore(shareTargetStore);
+				const getRequest = store.get(shareTargetKey);
+
+				getRequest.onsuccess = () => {
+					const value = getRequest.result as SharedFileRecord | undefined;
+					if (value) store.delete(shareTargetKey);
+					resolve(value);
+				};
+				getRequest.onerror = () => reject(getRequest.error);
+				transaction.onerror = () => reject(transaction.error);
+			},
 		);
+
+		return record ?? null;
+	} finally {
+		db.close();
+	}
+}
+
+function openShareTargetDb(): Promise<IDBDatabase> {
+	return new Promise((resolve, reject) => {
+		const request = indexedDB.open(shareTargetDbName, 1);
+
+		request.onupgradeneeded = () => {
+			request.result.createObjectStore(shareTargetStore, { keyPath: "id" });
+		};
+		request.onsuccess = () => resolve(request.result);
+		request.onerror = () => reject(request.error);
+	});
+}
+
+function selectClipboardImage(blob: Blob, mimeType: string) {
+	selectFile(
+		new File([blob], getImageFilename(mimeType), {
+			type: mimeType,
+		}),
+	);
+}
+
+function selectClipboardText(text: string) {
+	selectFile(
+		new File([text], "ghostdrop-note.txt", {
+			type: "text/plain;charset=utf-8",
+		}),
+	);
+}
+
+function shouldIgnorePaste(event: ClipboardEvent): boolean {
+	const target = event.target as HTMLElement | null;
+
+	return (
+		target instanceof HTMLInputElement ||
+		target instanceof HTMLTextAreaElement ||
+		target?.isContentEditable === true
+	);
+}
+
+function handleWindowPaste(event: ClipboardEvent) {
+	if (
+		view !== "main" ||
+		status.type === "loading" ||
+		shouldIgnorePaste(event)
+	) {
+		return;
 	}
 
-	async function consumeSharedFileRecord(): Promise<SharedFileRecord | null> {
-		const db = await openShareTargetDb();
+	const clipboard = event.clipboardData;
+	if (!clipboard) return;
 
-		try {
-			const record = await new Promise<SharedFileRecord | undefined>(
-				(resolve, reject) => {
-					const transaction = db.transaction(shareTargetStore, "readwrite");
-					const store = transaction.objectStore(shareTargetStore);
-					const getRequest = store.get(shareTargetKey);
+	const imageItem = Array.from(clipboard.items).find((item) =>
+		item.type.startsWith("image/"),
+	);
 
-					getRequest.onsuccess = () => {
-						const value = getRequest.result as SharedFileRecord | undefined;
-						if (value) store.delete(shareTargetKey);
-						resolve(value);
-					};
-					getRequest.onerror = () => reject(getRequest.error);
-					transaction.onerror = () => reject(transaction.error);
-				},
-			);
+	if (imageItem) {
+		const image = imageItem.getAsFile();
+		if (!image) return;
 
-			return record ?? null;
-		} finally {
-			db.close();
+		event.preventDefault();
+		selectClipboardImage(image, image.type || imageItem.type);
+		return;
+	}
+
+	const text = clipboard.getData("text/plain");
+	if (text.trim()) {
+		event.preventDefault();
+		selectClipboardText(text);
+	}
+}
+
+async function handlePasteClipboard() {
+	if (!navigator.clipboard?.read && !navigator.clipboard?.readText) {
+		status = {
+			type: "error",
+			message: "Clipboard access is not supported in this browser",
+		};
+		return;
+	}
+
+	try {
+		if (navigator.clipboard.read) {
+			const items = await navigator.clipboard.read();
+			for (const item of items) {
+				const imageType = item.types.find((type) => type.startsWith("image/"));
+
+				if (imageType) {
+					const blob = await item.getType(imageType);
+					selectClipboardImage(blob, imageType);
+					return;
+				}
+			}
 		}
+
+		if (!navigator.clipboard.readText) {
+			status = {
+				type: "error",
+				message: "Clipboard does not contain an image",
+			};
+			return;
+		}
+
+		const text = await navigator.clipboard.readText();
+		if (!text.trim()) {
+			status = {
+				type: "error",
+				message: "Clipboard does not contain text or an image",
+			};
+			return;
+		}
+
+		selectClipboardText(text);
+	} catch (err: unknown) {
+		console.error("Clipboard paste error:", err);
+		status = {
+			type: "error",
+			message:
+				err instanceof Error ? err.message : "Clipboard permission was denied",
+		};
+	}
+}
+
+async function handleUpload() {
+	if (!selectedFile) return;
+
+	status = {
+		type: "loading",
+		message: endToEndEncryption
+			? "Encrypting file..."
+			: "Initializing transfer...",
+	};
+
+	try {
+		const encrypted = endToEndEncryption
+			? await encryptFile(selectedFile)
+			: null;
+
+		status = { type: "loading", message: "Initializing transfer..." };
+		const uploadFile = encrypted?.file ?? selectedFile;
+
+		// 1. Handshake
+		const handshakeRes = await fetch(`${API_URL}/transfers`, {
+			method: "POST",
+			headers: {
+				...headers,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				filename: selectedFile.name,
+				size: uploadFile.size,
+				originalSize: encrypted?.originalSize,
+				mimeType: selectedFile.type || "application/octet-stream",
+				encryptionAlgorithm: encrypted?.algorithm ?? "none",
+				encryptionIv: encrypted?.ivBase64Url ?? null,
+				maxDownloads,
+				expiresInMinutes,
+			}),
+		});
+
+		if (!handshakeRes.ok) {
+			const text = await handshakeRes.text();
+			let errorMessage = "Handshake failed";
+			try {
+				const err = JSON.parse(text);
+				errorMessage = err.error || errorMessage;
+			} catch {
+				errorMessage = `Server Error: ${handshakeRes.status} ${handshakeRes.statusText}`;
+			}
+			throw new Error(errorMessage);
+		}
+
+		const data = await handshakeRes.json();
+		const { code } = data;
+		status = {
+			type: "loading",
+			message: `Uploading ${selectedFile.name}...`,
+		};
+
+		// 2. Binary Stream
+		const formData = new FormData();
+		formData.append("file", uploadFile);
+
+		const uploadRes = await fetch(`${API_URL}/transfers/${code}/upload`, {
+			method: "POST",
+			headers: headers, // Bypass tunnel reminder for upload too
+			body: formData,
+		});
+
+		if (!uploadRes.ok) {
+			throw new Error("Streaming upload failed");
+		}
+
+		shareKey = encrypted?.keyBase64Url ?? "";
+		shareLink = encrypted
+			? buildEncryptedShareLink(code, encrypted.keyBase64Url)
+			: "";
+		status = {
+			type: "success",
+			message: "File ready for ghosting!",
+			code: code,
+		};
+		selectedFile = null;
+		if (fileInput) fileInput.value = "";
+	} catch (err: unknown) {
+		console.error("Upload error:", err);
+		status = {
+			type: "error",
+			message: err instanceof Error ? err.message : "Upload failed",
+		};
+	}
+}
+
+async function handlePeek() {
+	if (!hasCompleteReceiveCode()) return;
+
+	status = { type: "loading", message: "Fetching metadata..." };
+	fileMeta = null;
+
+	try {
+		const cleanCode = normalizeReceiveCode();
+		const metaRes = await fetch(`${API_URL}/transfers/${cleanCode}`, {
+			headers: headers,
+		});
+		if (!metaRes.ok) {
+			const err = await metaRes.json();
+			throw new Error(err.error || "File not found");
+		}
+
+		const meta = await metaRes.json();
+		fileMeta = normalizeTransferMetadata(meta);
+		peekedCode = cleanCode;
+		status = { type: "idle", message: "" };
+		view = "peek";
+	} catch (err: unknown) {
+		console.error("Peek error:", err);
+		status = {
+			type: "error",
+			message: err instanceof Error ? err.message : "Peek failed",
+		};
+	}
+}
+
+async function handleDownload() {
+	if (!hasCompleteReceiveCode()) return;
+
+	status = { type: "loading", message: "Download starting..." };
+
+	try {
+		const cleanCode = normalizeReceiveCode();
+		const meta = await getTransferMetadata(cleanCode);
+		await downloadTransfer(cleanCode, meta);
+		resetReceiveState();
+		status = { type: "idle", message: "" };
+	} catch (err: unknown) {
+		console.error("Download error:", err);
+		resetReceiveState();
+		status = {
+			type: "error",
+			message: err instanceof Error ? err.message : "Download failed",
+		};
+	}
+}
+
+async function handleDownloadFromPeek() {
+	status = { type: "loading", message: "Download starting..." };
+
+	try {
+		await downloadTransfer(peekedCode, fileMeta);
+		resetReceiveState();
+		status = { type: "idle", message: "" };
+	} catch (err: unknown) {
+		console.error("Download error:", err);
+		resetReceiveState();
+		status = {
+			type: "error",
+			message: err instanceof Error ? err.message : "Download failed",
+		};
+	}
+}
+
+async function downloadTransfer(code: string, meta?: TransferMetadata | null) {
+	const transferMeta = meta ?? (await getTransferMetadata(code));
+	const res = await fetch(`${API_URL}/transfers/${code}/download`, {
+		headers: headers,
+	});
+
+	if (!res.ok) {
+		const err = await res.json().catch(() => null);
+		throw new Error(err?.error || "Download failed");
 	}
 
-	function openShareTargetDb(): Promise<IDBDatabase> {
-		return new Promise((resolve, reject) => {
-			const request = indexedDB.open(shareTargetDbName, 1);
+	const blob = await res.blob();
+	const file = await decryptTransferBlob(blob, transferMeta);
+	const url = URL.createObjectURL(file);
+	const link = document.createElement("a");
+	link.href = url;
+	link.download = file.name || `ghostdrop-${code}`;
+	document.body.appendChild(link);
+	link.click();
+	link.remove();
+	setTimeout(() => URL.revokeObjectURL(url), 0);
+}
 
-			request.onupgradeneeded = () => {
-				request.result.createObjectStore(shareTargetStore, { keyPath: "id" });
-			};
-			request.onsuccess = () => resolve(request.result);
-			request.onerror = () => reject(request.error);
+async function getTransferMetadata(code: string): Promise<TransferMetadata> {
+	const metaRes = await fetch(`${API_URL}/transfers/${code}`, {
+		headers: headers,
+	});
+
+	if (!metaRes.ok) {
+		const err = await metaRes.json().catch(() => null);
+		throw new Error(err?.error || "File metadata could not be loaded");
+	}
+
+	const meta = await metaRes.json();
+	return normalizeTransferMetadata(meta);
+}
+
+function normalizeTransferMetadata(meta: unknown): TransferMetadata {
+	const value = meta as Partial<TransferMetadata>;
+	const encryption = value.encryption ?? {
+		algorithm: "none",
+		iv: null,
+	};
+
+	return {
+		filename: String(value.filename ?? ""),
+		size: Number(value.size ?? 0),
+		originalSize:
+			value.originalSize === null || value.originalSize === undefined
+				? null
+				: Number(value.originalSize),
+		mimeType: String(value.mimeType ?? "application/octet-stream"),
+		downloadCount: Number(value.downloadCount ?? 0),
+		maxDownloads: Number(value.maxDownloads ?? 1),
+		expiresAt: String(value.expiresAt ?? ""),
+		encryption: {
+			algorithm:
+				encryption.algorithm === "AES-GCM-256" ? "AES-GCM-256" : "none",
+			iv: encryption.iv ?? null,
+		},
+	};
+}
+
+async function decryptTransferBlob(
+	encryptedBlob: Blob,
+	meta: TransferMetadata,
+): Promise<File> {
+	if (meta.encryption.algorithm === "none") {
+		return new File([encryptedBlob], meta.filename, {
+			type: meta.mimeType || "application/octet-stream",
 		});
 	}
 
-	function selectClipboardImage(blob: Blob, mimeType: string) {
-		selectFile(
-			new File([blob], getImageFilename(mimeType), {
-				type: mimeType,
-			}),
-		);
+	if (!meta.encryption.iv) {
+		throw new Error("Transfer is missing encryption metadata");
 	}
 
-	function selectClipboardText(text: string) {
-		selectFile(
-			new File([text], "ghostdrop-note.txt", {
-				type: "text/plain;charset=utf-8",
-			}),
-		);
+	const key = receiveKey.trim();
+	if (!key) {
+		throw new Error("Decryption key is required");
 	}
 
-	function shouldIgnorePaste(event: ClipboardEvent): boolean {
-		const target = event.target as HTMLElement | null;
+	try {
+		return await decryptFile({
+			encryptedBlob,
+			keyBase64Url: key,
+			ivBase64Url: meta.encryption.iv,
+			filename: meta.filename,
+			mimeType: meta.mimeType,
+		});
+	} catch (err) {
+		console.error("Decrypt error:", err);
+		throw new Error("Could not decrypt file. Check the transfer key.", {
+			cause: err,
+		});
+	}
+}
 
-		return (
-			target instanceof HTMLInputElement ||
-			target instanceof HTMLTextAreaElement ||
-			target?.isContentEditable === true
-		);
+function buildEncryptedShareLink(code: string, key: string): string {
+	const baseUrl =
+		typeof window === "undefined"
+			? ""
+			: `${window.location.origin}${window.location.pathname}`;
+	const params = new URLSearchParams({ transfer: code, key });
+	return `${baseUrl}#${params.toString()}`;
+}
+
+function stripTransferCode(value: string): string {
+	return value
+		.replace(/[^a-z0-9]/gi, "")
+		.slice(0, transferCodeLength)
+		.toUpperCase();
+}
+
+function formatTransferCode(value: string): string {
+	const code = stripTransferCode(value);
+	if (code.length <= 3) return code;
+	return `${code.slice(0, 3)}-${code.slice(3)}`;
+}
+
+function normalizeReceiveCode(): string {
+	return formatTransferCode(receiveCode);
+}
+
+function hasCompleteReceiveCode(): boolean {
+	return stripTransferCode(receiveCode).length === transferCodeLength;
+}
+
+function receiveCodeCharacters(): string[] {
+	const code = stripTransferCode(receiveCode);
+	return Array.from(
+		{ length: transferCodeLength },
+		(_, index) => code[index] ?? "",
+	);
+}
+
+function handleReceiveCodeInput(e: Event) {
+	receiveCode = formatTransferCode((e.currentTarget as HTMLInputElement).value);
+}
+
+function handleReceiveCodeKeydown(e: KeyboardEvent) {
+	if (e.key === "Enter") {
+		handlePeek();
+		return;
 	}
 
-	function handleWindowPaste(event: ClipboardEvent) {
-		if (view !== "main" || status.type === "loading" || shouldIgnorePaste(event)) {
-			return;
-		}
-
-		const clipboard = event.clipboardData;
-		if (!clipboard) return;
-
-		const imageItem = Array.from(clipboard.items).find((item) =>
-			item.type.startsWith("image/"),
-		);
-
-		if (imageItem) {
-			const image = imageItem.getAsFile();
-			if (!image) return;
-
-			event.preventDefault();
-			selectClipboardImage(image, image.type || imageItem.type);
-			return;
-		}
-
-		const text = clipboard.getData("text/plain");
-		if (text.trim()) {
-			event.preventDefault();
-			selectClipboardText(text);
-		}
+	if (e.key.length === 1 && !/^[a-z0-9]$/i.test(e.key)) {
+		e.preventDefault();
 	}
+}
 
-	async function handlePasteClipboard() {
-		if (!navigator.clipboard?.read && !navigator.clipboard?.readText) {
-			status = {
-				type: "error",
-				message: "Clipboard access is not supported in this browser",
-			};
-			return;
-		}
+async function handleViewNote() {
+	if (!fileMeta) return;
 
-		try {
-			if (navigator.clipboard.read) {
-				const items = await navigator.clipboard.read();
-				for (const item of items) {
-					const imageType = item.types.find((type) =>
-						type.startsWith("image/"),
-					);
+	status = { type: "loading", message: "Opening note..." };
+	noteCopied = false;
+	revokeImagePreviewUrl();
 
-					if (imageType) {
-						const blob = await item.getType(imageType);
-						selectClipboardImage(blob, imageType);
-						return;
-					}
-				}
-			}
-
-			if (!navigator.clipboard.readText) {
-				status = {
-					type: "error",
-					message: "Clipboard does not contain an image",
-				};
-				return;
-			}
-
-			const text = await navigator.clipboard.readText();
-			if (!text.trim()) {
-				status = {
-					type: "error",
-					message: "Clipboard does not contain text or an image",
-				};
-				return;
-			}
-
-			selectClipboardText(text);
-		} catch (err: unknown) {
-			console.error("Clipboard paste error:", err);
-			status = {
-				type: "error",
-				message:
-					err instanceof Error
-						? err.message
-						: "Clipboard permission was denied",
-			};
-		}
-	}
-
-	async function handleUpload() {
-		if (!selectedFile) return;
-
-		status = {
-			type: "loading",
-			message: endToEndEncryption
-				? "Encrypting file..."
-				: "Initializing transfer...",
-		};
-
-		try {
-			const encrypted = endToEndEncryption
-				? await encryptFile(selectedFile)
-				: null;
-
-			status = { type: "loading", message: "Initializing transfer..." };
-			const uploadFile = encrypted?.file ?? selectedFile;
-
-			// 1. Handshake
-			const handshakeRes = await fetch(`${API_URL}/transfers`, {
-				method: "POST",
-				headers: {
-					...headers,
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({
-					filename: selectedFile.name,
-					size: uploadFile.size,
-					originalSize: encrypted?.originalSize,
-					mimeType: selectedFile.type || "application/octet-stream",
-					encryptionAlgorithm: encrypted?.algorithm ?? "none",
-					encryptionIv: encrypted?.ivBase64Url ?? null,
-					maxDownloads,
-					expiresInMinutes,
-				}),
-			});
-
-			if (!handshakeRes.ok) {
-				const text = await handshakeRes.text();
-				let errorMessage = "Handshake failed";
-				try {
-					const err = JSON.parse(text);
-					errorMessage = err.error || errorMessage;
-				} catch {
-					errorMessage = `Server Error: ${handshakeRes.status} ${handshakeRes.statusText}`;
-				}
-				throw new Error(errorMessage);
-			}
-
-			const data = await handshakeRes.json();
-			const { code } = data;
-			status = {
-				type: "loading",
-				message: `Uploading ${selectedFile.name}...`,
-			};
-
-			// 2. Binary Stream
-			const formData = new FormData();
-			formData.append("file", uploadFile);
-
-			const uploadRes = await fetch(
-				`${API_URL}/transfers/${code}/upload`,
-				{
-					method: "POST",
-					headers: headers, // Bypass tunnel reminder for upload too
-					body: formData,
-				},
-			);
-
-			if (!uploadRes.ok) {
-				throw new Error("Streaming upload failed");
-			}
-
-			shareKey = encrypted?.keyBase64Url ?? "";
-			shareLink = encrypted
-				? buildEncryptedShareLink(code, encrypted.keyBase64Url)
-				: "";
-			status = {
-				type: "success",
-				message: "File ready for ghosting!",
-				code: code,
-			};
-			selectedFile = null;
-			if (fileInput) fileInput.value = "";
-		} catch (err: unknown) {
-			console.error("Upload error:", err);
-			status = {
-				type: "error",
-				message: err instanceof Error ? err.message : "Upload failed",
-			};
-		}
-	}
-
-	async function handlePeek() {
-		if (!hasCompleteReceiveCode()) return;
-
-		status = { type: "loading", message: "Fetching metadata..." };
-		fileMeta = null;
-
-		try {
-			const cleanCode = normalizeReceiveCode();
-			const metaRes = await fetch(`${API_URL}/transfers/${cleanCode}`, {
-				headers: headers,
-			});
-			if (!metaRes.ok) {
-				const err = await metaRes.json();
-				throw new Error(err.error || "File not found");
-			}
-
-			const meta = await metaRes.json();
-			fileMeta = normalizeTransferMetadata(meta);
-			peekedCode = cleanCode;
-			status = { type: "idle", message: "" };
-			view = "peek";
-		} catch (err: unknown) {
-			console.error("Peek error:", err);
-			status = {
-				type: "error",
-				message: err instanceof Error ? err.message : "Peek failed",
-			};
-		}
-	}
-
-	async function handleDownload() {
-		if (!hasCompleteReceiveCode()) return;
-
-		status = { type: "loading", message: "Download starting..." };
-
-		try {
-			const cleanCode = normalizeReceiveCode();
-			const meta = await getTransferMetadata(cleanCode);
-			await downloadTransfer(cleanCode, meta);
-			resetReceiveState();
-			status = { type: "idle", message: "" };
-		} catch (err: unknown) {
-			console.error("Download error:", err);
-			resetReceiveState();
-			status = {
-				type: "error",
-				message:
-					err instanceof Error ? err.message : "Download failed",
-			};
-		}
-	}
-
-	async function handleDownloadFromPeek() {
-		status = { type: "loading", message: "Download starting..." };
-
-		try {
-			await downloadTransfer(peekedCode, fileMeta);
-			resetReceiveState();
-			status = { type: "idle", message: "" };
-		} catch (err: unknown) {
-			console.error("Download error:", err);
-			resetReceiveState();
-			status = {
-				type: "error",
-				message:
-					err instanceof Error ? err.message : "Download failed",
-			};
-		}
-	}
-
-	async function downloadTransfer(code: string, meta?: TransferMetadata | null) {
-		const transferMeta = meta ?? (await getTransferMetadata(code));
-		const res = await fetch(`${API_URL}/transfers/${code}/download`, {
+	try {
+		const res = await fetch(`${API_URL}/transfers/${peekedCode}/preview`, {
 			headers: headers,
 		});
 
 		if (!res.ok) {
 			const err = await res.json().catch(() => null);
-			throw new Error(err?.error || "Download failed");
+			throw new Error(err?.error || "Note could not be opened");
 		}
 
-		const blob = await res.blob();
-		const file = await decryptTransferBlob(blob, transferMeta);
-		const url = URL.createObjectURL(file);
-		const link = document.createElement("a");
-		link.href = url;
-		link.download = file.name || `ghostdrop-${code}`;
-		document.body.appendChild(link);
-		link.click();
-		link.remove();
-		setTimeout(() => URL.revokeObjectURL(url), 0);
+		const encryptedBlob = await res.blob();
+		const file = await decryptTransferBlob(encryptedBlob, fileMeta);
+		noteContent = await file.text();
+		status = { type: "idle", message: "" };
+		view = "note";
+	} catch (err: unknown) {
+		console.error("Note view error:", err);
+		status = {
+			type: "error",
+			message: err instanceof Error ? err.message : "Note could not be opened",
+		};
 	}
+}
 
-	async function getTransferMetadata(code: string): Promise<TransferMetadata> {
-		const metaRes = await fetch(`${API_URL}/transfers/${code}`, {
+async function handleViewImage() {
+	if (!fileMeta) return;
+
+	status = { type: "loading", message: "Opening image..." };
+	revokeImagePreviewUrl();
+
+	try {
+		const res = await fetch(`${API_URL}/transfers/${peekedCode}/preview`, {
 			headers: headers,
 		});
 
-		if (!metaRes.ok) {
-			const err = await metaRes.json().catch(() => null);
-			throw new Error(err?.error || "File metadata could not be loaded");
+		if (!res.ok) {
+			const err = await res.json().catch(() => null);
+			throw new Error(err?.error || "Image could not be opened");
 		}
 
-		const meta = await metaRes.json();
-		return normalizeTransferMetadata(meta);
-	}
-
-	function normalizeTransferMetadata(meta: unknown): TransferMetadata {
-		const value = meta as Partial<TransferMetadata>;
-		const encryption = value.encryption ?? {
-			algorithm: "none",
-			iv: null,
-		};
-
-		return {
-			filename: String(value.filename ?? ""),
-			size: Number(value.size ?? 0),
-			originalSize:
-				value.originalSize === null || value.originalSize === undefined
-					? null
-					: Number(value.originalSize),
-			mimeType: String(value.mimeType ?? "application/octet-stream"),
-			downloadCount: Number(value.downloadCount ?? 0),
-			maxDownloads: Number(value.maxDownloads ?? 1),
-			expiresAt: String(value.expiresAt ?? ""),
-			encryption: {
-				algorithm:
-					encryption.algorithm === "AES-GCM-256"
-						? "AES-GCM-256"
-						: "none",
-				iv: encryption.iv ?? null,
-			},
+		const encryptedBlob = await res.blob();
+		const file = await decryptTransferBlob(encryptedBlob, fileMeta);
+		imagePreviewUrl = URL.createObjectURL(file);
+		status = { type: "idle", message: "" };
+		view = "image";
+	} catch (err: unknown) {
+		console.error("Image preview error:", err);
+		status = {
+			type: "error",
+			message: err instanceof Error ? err.message : "Image could not be opened",
 		};
 	}
+}
 
-	async function decryptTransferBlob(
-		encryptedBlob: Blob,
-		meta: TransferMetadata,
-	): Promise<File> {
-		if (meta.encryption.algorithm === "none") {
-			return new File([encryptedBlob], meta.filename, {
-				type: meta.mimeType || "application/octet-stream",
-			});
-		}
-
-		if (!meta.encryption.iv) {
-			throw new Error("Transfer is missing encryption metadata");
-		}
-
-		const key = receiveKey.trim();
-		if (!key) {
-			throw new Error("Decryption key is required");
-		}
-
-		try {
-			return await decryptFile({
-				encryptedBlob,
-				keyBase64Url: key,
-				ivBase64Url: meta.encryption.iv,
-				filename: meta.filename,
-				mimeType: meta.mimeType,
-			});
-		} catch (err) {
-			console.error("Decrypt error:", err);
-			throw new Error("Could not decrypt file. Check the transfer key.", {
-				cause: err,
-			});
-		}
+async function handleCopyNote() {
+	try {
+		await navigator.clipboard.writeText(noteContent);
+		noteCopied = true;
+	} catch (err: unknown) {
+		console.error("Note copy error:", err);
+		status = {
+			type: "error",
+			message: "Could not copy note to clipboard",
+		};
 	}
+}
 
-	function buildEncryptedShareLink(code: string, key: string): string {
-		const baseUrl =
-			typeof window === "undefined"
-				? ""
-				: `${window.location.origin}${window.location.pathname}`;
-		const params = new URLSearchParams({ transfer: code, key });
-		return `${baseUrl}#${params.toString()}`;
-	}
-
-	function stripTransferCode(value: string): string {
-		return value
-			.replace(/[^a-z0-9]/gi, "")
-			.slice(0, transferCodeLength)
-			.toUpperCase();
-	}
-
-	function formatTransferCode(value: string): string {
-		const code = stripTransferCode(value);
-		if (code.length <= 3) return code;
-		return `${code.slice(0, 3)}-${code.slice(3)}`;
-	}
-
-	function normalizeReceiveCode(): string {
-		return formatTransferCode(receiveCode);
-	}
-
-	function hasCompleteReceiveCode(): boolean {
-		return stripTransferCode(receiveCode).length === transferCodeLength;
-	}
-
-	function receiveCodeCharacters(): string[] {
-		const code = stripTransferCode(receiveCode);
-		return Array.from(
-			{ length: transferCodeLength },
-			(_, index) => code[index] ?? "",
-		);
-	}
-
-	function handleReceiveCodeInput(e: Event) {
-		receiveCode = formatTransferCode((e.currentTarget as HTMLInputElement).value);
-	}
-
-	function handleReceiveCodeKeydown(e: KeyboardEvent) {
-		if (e.key === "Enter") {
-			handlePeek();
+async function copyShareValue(value: string, kind: "link" | "key") {
+	try {
+		await navigator.clipboard.writeText(value);
+		if (kind === "link") {
+			copiedShareLink = true;
+			setTimeout(() => (copiedShareLink = false), 1800);
 			return;
 		}
 
-		if (e.key.length === 1 && !/^[a-z0-9]$/i.test(e.key)) {
-			e.preventDefault();
-		}
+		copiedShareKey = true;
+		setTimeout(() => (copiedShareKey = false), 1800);
+	} catch (err: unknown) {
+		console.error("Share copy error:", err);
+		status = {
+			type: "error",
+			message: "Could not copy to clipboard",
+		};
 	}
+}
 
-	async function handleViewNote() {
-		if (!fileMeta) return;
+function goBackToPeek() {
+	view = "peek";
+	noteCopied = false;
+	revokeImagePreviewUrl();
+	status = { type: "idle", message: "" };
+}
 
-		status = { type: "loading", message: "Opening note..." };
-		noteCopied = false;
-		revokeImagePreviewUrl();
+function resetReceiveState() {
+	receiveCode = "";
+	receiveKey = "";
+	peekedCode = "";
+	fileMeta = null;
+	noteContent = "";
+	noteCopied = false;
+	revokeImagePreviewUrl();
+	view = "main";
+}
 
-		try {
-			const res = await fetch(`${API_URL}/transfers/${peekedCode}/download`, {
-				headers: headers,
-			});
+function goBack() {
+	resetReceiveState();
+	status = { type: "idle", message: "" };
+}
 
-			if (!res.ok) {
-				const err = await res.json().catch(() => null);
-				throw new Error(err?.error || "Note could not be opened");
-			}
+function isTextNote(meta: { mimeType: string } | null): boolean {
+	return meta?.mimeType.toLowerCase().startsWith("text/plain") ?? false;
+}
 
-			const encryptedBlob = await res.blob();
-			const file = await decryptTransferBlob(encryptedBlob, fileMeta);
-			noteContent = await file.text();
-			status = { type: "idle", message: "" };
-			view = "note";
-		} catch (err: unknown) {
-			console.error("Note view error:", err);
-			status = {
-				type: "error",
-				message:
-					err instanceof Error ? err.message : "Note could not be opened",
-			};
-		}
-	}
+function isImage(meta: { mimeType: string } | null): boolean {
+	return meta?.mimeType.toLowerCase().startsWith("image/") ?? false;
+}
 
-	async function handleViewImage() {
-		if (!fileMeta) return;
+function formatSize(bytes: number): string {
+	if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
+	if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
+	if (bytes >= 1_000) return `${Math.round(bytes / 1_000)} KB`;
+	return `${bytes} B`;
+}
 
-		status = { type: "loading", message: "Opening image..." };
-		revokeImagePreviewUrl();
-
-		try {
-			const res = await fetch(`${API_URL}/transfers/${peekedCode}/download`, {
-				headers: headers,
-			});
-
-			if (!res.ok) {
-				const err = await res.json().catch(() => null);
-				throw new Error(err?.error || "Image could not be opened");
-			}
-
-			const encryptedBlob = await res.blob();
-			const file = await decryptTransferBlob(encryptedBlob, fileMeta);
-			imagePreviewUrl = URL.createObjectURL(file);
-			status = { type: "idle", message: "" };
-			view = "image";
-		} catch (err: unknown) {
-			console.error("Image preview error:", err);
-			status = {
-				type: "error",
-				message:
-					err instanceof Error ? err.message : "Image could not be opened",
-			};
-		}
-	}
-
-	async function handleCopyNote() {
-		try {
-			await navigator.clipboard.writeText(noteContent);
-			noteCopied = true;
-		} catch (err: unknown) {
-			console.error("Note copy error:", err);
-			status = {
-				type: "error",
-				message: "Could not copy note to clipboard",
-			};
-		}
-	}
-
-	async function copyShareValue(value: string, kind: "link" | "key") {
-		try {
-			await navigator.clipboard.writeText(value);
-			if (kind === "link") {
-				copiedShareLink = true;
-				setTimeout(() => (copiedShareLink = false), 1800);
-				return;
-			}
-
-			copiedShareKey = true;
-			setTimeout(() => (copiedShareKey = false), 1800);
-		} catch (err: unknown) {
-			console.error("Share copy error:", err);
-			status = {
-				type: "error",
-				message: "Could not copy to clipboard",
-			};
-		}
-	}
-
-	function goBackToPeek() {
-		view = "peek";
-		noteCopied = false;
-		revokeImagePreviewUrl();
-		status = { type: "idle", message: "" };
-	}
-
-	function resetReceiveState() {
-		receiveCode = "";
-		receiveKey = "";
-		peekedCode = "";
-		fileMeta = null;
-		noteContent = "";
-		noteCopied = false;
-		revokeImagePreviewUrl();
-		view = "main";
-	}
-
-	function goBack() {
-		resetReceiveState();
-		status = { type: "idle", message: "" };
-	}
-
-	function isTextNote(meta: { mimeType: string } | null): boolean {
-		return meta?.mimeType.toLowerCase().startsWith("text/plain") ?? false;
-	}
-
-	function isImage(meta: { mimeType: string } | null): boolean {
-		return meta?.mimeType.toLowerCase().startsWith("image/") ?? false;
-	}
-
-	function formatSize(bytes: number): string {
-		if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
-		if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
-		if (bytes >= 1_000) return `${Math.round(bytes / 1_000)} KB`;
-		return `${bytes} B`;
-	}
-
-	function formatExpiry(iso: string): string {
-		const diff = new Date(iso).getTime() - Date.now();
-		if (diff <= 0) return "Expired";
-		const mins = Math.round(diff / 60_000);
-		if (mins < 60) return `in ${mins} min`;
-		const hours = Math.round(mins / 60);
-		if (hours < 24) return `in ${hours}h`;
-		const days = Math.round(hours / 24);
-		return `in ${days} day${days > 1 ? "s" : ""}`;
-	}
+function formatExpiry(iso: string): string {
+	const diff = new Date(iso).getTime() - Date.now();
+	if (diff <= 0) return "Expired";
+	const mins = Math.round(diff / 60_000);
+	if (mins < 60) return `in ${mins} min`;
+	const hours = Math.round(mins / 60);
+	if (hours < 24) return `in ${hours}h`;
+	const days = Math.round(hours / 24);
+	return `in ${days} day${days > 1 ? "s" : ""}`;
+}
 </script>
 
 <svelte:window onpaste={handleWindowPaste} />

@@ -14,6 +14,7 @@ export interface Transfer {
 	encryption_algorithm: string;
 	encryption_iv: string | null;
 	original_size_bytes: string | null;
+	status: string;
 }
 
 export interface CreateTransferInput {
@@ -88,11 +89,24 @@ export async function getTransferByCode(
 }
 
 /**
- * Increments the download count for a transfer.
+ * Atomically increments the download count only if the limit has not been reached.
+ * Returns true if the increment succeeded, false if the download limit was already reached.
+ * This eliminates the TOCTOU race between checking and incrementing.
  */
-export async function incrementDownloadCount(id: string): Promise<void> {
+export async function tryIncrementDownloadCount(id: string): Promise<boolean> {
+	const result = await pool.query<{ download_count: number }>(
+		"UPDATE transfers SET download_count = download_count + 1 WHERE id = $1 AND (max_downloads IS NULL OR download_count < max_downloads) RETURNING download_count",
+		[id],
+	);
+	return (result.rowCount ?? 0) > 0;
+}
+
+/**
+ * Marks a transfer as successfully uploaded.
+ */
+export async function markTransferUploaded(id: string): Promise<void> {
 	await pool.query(
-		"UPDATE transfers SET download_count = download_count + 1 WHERE id = $1",
+		"UPDATE transfers SET status = 'uploaded' WHERE id = $1",
 		[id],
 	);
 }

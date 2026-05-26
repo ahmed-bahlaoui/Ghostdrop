@@ -10,9 +10,11 @@ import redis from "./services/redis.js";
 import minio, { BUCKET_NAME, initializeStorage } from "./services/storage.js";
 import {
 	createTransfer,
+	deleteTransfer,
 	getTransferByCode,
-	incrementDownloadCount,
+	markTransferUploaded,
 	testPostgres,
+	tryIncrementDownloadCount,
 } from "./services/transfers.js";
 import { generateObjectKey } from "./utils/generate_minio_object_key.js";
 import { generateTransferCode } from "./utils/generate_session_transfer_code.js";
@@ -295,7 +297,12 @@ fastify.post("/transfers/:code/upload", async (request, reply) => {
 		return reply.status(404).send({ error: "Transfer metadata not found" });
 	}
 
-	// 2. Get the stream
+	// 2. Reject re-uploads to already-uploaded transfers
+	if (transfer.status === "uploaded") {
+		return reply.status(409).send({ error: "Transfer has already been uploaded" });
+	}
+
+	// 3. Get the stream
 	const data = await request.file();
 	if (!data) {
 		return reply.status(400).send({ error: "No file provided" });
@@ -339,10 +346,13 @@ fastify.post("/transfers/:code/upload", async (request, reply) => {
 			});
 		}
 
+		await markTransferUploaded(transfer.id);
 		return { message: "Upload successful", code: transfer.code };
 	} catch (err) {
 		if (err instanceof UploadSizeMismatchError) {
-			await minio.removeObject(BUCKET_NAME, transfer.object_key).catch(() => { });
+			await minio.removeObject(BUCKET_NAME, transfer.object_key).catch(() => {});
+			await deleteTransfer(transfer.id);
+			await redis.del(`transfer:code:${upperCode}`);
 			return reply.status(400).send({
 				error: "Uploaded file size does not match transfer metadata",
 				expectedSize: err.expectedSize,
@@ -350,6 +360,9 @@ fastify.post("/transfers/:code/upload", async (request, reply) => {
 			});
 		}
 
+		await minio.removeObject(BUCKET_NAME, transfer.object_key).catch(() => {});
+		await deleteTransfer(transfer.id);
+		await redis.del(`transfer:code:${upperCode}`);
 		fastify.log.error(err);
 		return reply.status(500).send({ error: "Storage upload failed" });
 	}
@@ -373,15 +386,13 @@ fastify.get("/transfers/:code/download", async (request, reply) => {
 		return reply.status(404).send({ error: "Metadata missing" });
 	}
 
-	// 2. Check Download Limits
-	if (
-		transfer.max_downloads &&
-		transfer.download_count >= transfer.max_downloads
-	) {
-		return reply.status(403).send({ error: "Download limit reached" });
-	}
-
 	try {
+		// 2. Atomically check + increment download count (eliminates TOCTOU race)
+		const incremented = await tryIncrementDownloadCount(transfer.id);
+		if (!incremented) {
+			return reply.status(403).send({ error: "Download limit reached" });
+		}
+
 		// 3. Get stream from MinIO
 		const stream = await minio.getObject(BUCKET_NAME, transfer.object_key);
 
@@ -395,7 +406,41 @@ fastify.get("/transfers/:code/download", async (request, reply) => {
 		);
 
 		// 5. Pipe to client
-		await incrementDownloadCount(transfer.id);
+		return reply.send(stream);
+	} catch (err) {
+		fastify.log.error(err);
+		return reply.status(500).send({ error: "Storage retrieval failed" });
+	}
+});
+
+/**
+ * Preview endpoint (does NOT increment download count).
+ * Used by the peek view for note/image previews without consuming a download slot.
+ */
+fastify.get("/transfers/:code/preview", async (request, reply) => {
+	const { code } = request.params as { code: string };
+	const upperCode = code.toUpperCase();
+
+	const transferId = await redis.get(`transfer:code:${upperCode}`);
+	if (!transferId) {
+		return reply.status(404).send({ error: "Transfer not found or expired" });
+	}
+
+	const transfer = await getTransferByCode(upperCode);
+	if (!transfer) {
+		return reply.status(404).send({ error: "Metadata missing" });
+	}
+
+	try {
+		const stream = await minio.getObject(BUCKET_NAME, transfer.object_key);
+
+		reply.header("Content-Type", transfer.mime_type);
+		reply.header("Content-Length", transfer.size_bytes);
+		reply.header(
+			"Content-Disposition",
+			`inline; filename="${transfer.original_filename}"`,
+		);
+
 		return reply.send(stream);
 	} catch (err) {
 		fastify.log.error(err);
