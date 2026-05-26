@@ -291,4 +291,76 @@ Recent connectivity fix:
 
 - Production server setup, testing, maintenance, backups, and troubleshooting are documented in [`docs/server-ops.md`](docs/server-ops.md).
 
+## Self-Hosting / Local Deployment
+
+GhostDrop is designed to be self-hosted. If the hosted instance at ghostdrop.app ever goes offline, you can run your own instance with Docker in minutes.
+
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) and Docker Compose (v2+)
+- A domain name pointing to your server (for production)
+- Ports 80 and 443 available (for production)
+
+### Quick Start (Local Staging)
+
+For local testing and development:
+
+```bash
+git clone https://github.com/your-org/ghostdrop.git
+cd ghostdrop
+docker compose -f compose.staging.yaml up -d --build
+```
+
+Visit `https://localhost` (accept the self-signed certificate warning).
+
+### Production Deployment
+
+1. Clone the repo onto your server:
+   ```bash
+   git clone https://github.com/your-org/ghostdrop.git
+   cd ghostdrop
+   ```
+
+2. Copy and configure the environment file:
+   ```bash
+   cp .env.production.example .env.production
+   ```
+   Edit `.env.production` with your domain, credentials, and S3 storage details.
+
+3. Create Docker secrets:
+   ```bash
+   mkdir -p secrets
+   echo "your-postgres-password" > secrets/postgres_password.txt
+   echo "your-redis-password" > secrets/redis_password.txt
+   echo "your-minio-access-key" > secrets/minio_access_key.txt
+   echo "your-minio-secret-key" > secrets/minio_secret_key.txt
+   ```
+
+4. Start the stack:
+   ```bash
+   docker compose --env-file .env.production -f compose.prod.yaml up -d --build
+   ```
+
+Caddy will automatically provision Let's Encrypt TLS certificates for your domain.
+
+### Requirements
+
+| Component | Minimum | Recommended |
+|-----------|---------|-------------|
+| CPU | 1 core | 2+ cores |
+| RAM | 512 MB | 2 GB |
+| Disk | 10 GB | 50 GB+ (depends on expected transfer volume) |
+| OS | Any Linux with Docker | Ubuntu 22.04+ |
+
+### Architecture Notes for Self-Hosters
+
+- **Storage:** Files are stored in MinIO (S3-compatible). You can swap it for any S3-compatible service (AWS S3, Cloudflare R2, Backblaze B2) by changing `MINIO_*` environment variables to your provider's endpoint and credentials.
+- **Database:** PostgreSQL stores transfer metadata and cleans itself up automatically via the cleanup worker.
+- **Ephemeral state:** Redis handles rate limiting and transfer code lookups with automatic TTL expiry.
+- **Gateway:** Caddy handles TLS, reverse proxy, and static file serving in a single container.
+- **Cleanup:** A background worker runs every 5 minutes to purge expired transfers from storage, database, and Redis.
+- **No persistent user data:** GhostDrop is anonymous by design — no accounts, no user tables, no long-term storage. Every transfer expires automatically.
+
+Detailed production operations (firewall, DNS, backups, monitoring) are in [`docs/server-ops.md`](docs/server-ops.md).
+
 ## Built with ❤️ and a lot of ☕
