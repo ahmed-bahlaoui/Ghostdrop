@@ -68,3 +68,6 @@ GEMINI.md
 
 # Text files
 *.txt
+
+# Demo output
+demo.gif
