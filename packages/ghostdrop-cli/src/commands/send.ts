@@ -92,7 +92,9 @@ export async function send(options: Partial<SendOptions> = {}): Promise<void> {
 		encryptionAlgorithm = result.algorithm;
 		encryptionIv = result.ivBase64Url;
 		keyBase64Url = result.keyBase64Url;
-		console.log(`Encrypted: ${formatSize(fileSize)} → ${formatSize(result.encryptedSize)}`);
+		console.log(
+			`Encrypted: ${formatSize(fileSize)} -> ${formatSize(result.encryptedSize)}`,
+		);
 	} else {
 		const { readFile } = await import("node:fs/promises");
 		uploadBuffer = await readFile(filePath);
@@ -119,7 +121,7 @@ export async function send(options: Partial<SendOptions> = {}): Promise<void> {
 	// --- Step 5: Output result ---
 
 	const formattedCode = formatTransferCode(code);
-	console.log(`\n✓ Uploaded!`);
+	console.log(`\nUploaded!`);
 	console.log(`  Transfer code: ${formattedCode}`);
 
 	if (encrypt && keyBase64Url) {
@@ -127,7 +129,9 @@ export async function send(options: Partial<SendOptions> = {}): Promise<void> {
 		const shareLink = buildEncryptedShareLink(webUrl, code, keyBase64Url);
 		console.log(`\n  Share link (E2EE):`);
 		console.log(`  ${shareLink}`);
-		console.log(`\n  Scan the QR code below or share the link:`);
-		printQrCode(shareLink);
+		if (process.env.GHOSTDROP_CLI_NO_QR !== "1") {
+			console.log(`\n  Scan the QR code below or share the link:`);
+			printQrCode(shareLink);
+		}
 	}
 }

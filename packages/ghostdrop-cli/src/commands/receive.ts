@@ -44,28 +44,33 @@ export async function receive(
 		meta = await fetchMetadata(formattedCode);
 	} catch (err) {
 		console.log(
-			`\n✗ ${err instanceof Error ? err.message : "Transfer not found or expired"}`,
+			`\nx ${err instanceof Error ? err.message : "Transfer not found or expired"}`,
 		);
 		return;
 	}
 
 	const displaySize = meta.originalSize ?? meta.size;
-	console.log("\n┌─────────────────────────────────────────┐");
-	console.log(`│ Filename:    ${meta.filename.padEnd(30)}│`);
-	console.log(`│ Type:        ${meta.mimeType.padEnd(30)}│`);
-	console.log(`│ Size:        ${formatSize(displaySize).padEnd(30)}│`);
-	console.log(
-		`│ Downloads:   ${`${meta.downloadCount} / ${meta.maxDownloads}`.padEnd(30)}│`,
-	);
-	console.log(
-		`│ Expires:     ${formatExpiry(meta.expiresAt).padEnd(30)}│`,
-	);
+	const rows = [
+		["Filename", meta.filename],
+		["Type", meta.mimeType],
+		["Size", formatSize(displaySize)],
+		["Downloads", `${meta.downloadCount} / ${meta.maxDownloads}`],
+		["Expires", formatExpiry(meta.expiresAt)],
+	];
 	if (meta.encryption.algorithm !== "none") {
+		rows.push(["Encrypted", meta.encryption.algorithm]);
+	}
+
+	const labelWidth = 10;
+	const valueWidth = Math.max(30, ...rows.map(([, value]) => value.length));
+	const borderWidth = labelWidth + valueWidth + 3;
+	console.log(`\n+${"-".repeat(borderWidth)}+`);
+	for (const [label, value] of rows) {
 		console.log(
-			`│ Encrypted:   ${meta.encryption.algorithm.padEnd(30)}│`,
+			`| ${`${label}:`.padEnd(labelWidth)} ${value.padEnd(valueWidth)} |`,
 		);
 	}
-	console.log("└─────────────────────────────────────────┘");
+	console.log(`+${"-".repeat(borderWidth)}+`);
 
 	let key = options.key;
 	if (meta.encryption.algorithm !== "none" && !key) {
@@ -124,10 +129,10 @@ export async function receive(
 			await rename(tempPath, outputPath);
 		}
 
-		console.log(`\n✓ Downloaded to ${outputPath}`);
+		console.log(`\nDownloaded to ${outputPath}`);
 	} catch (err) {
 		console.log(
-			`\n✗ ${err instanceof Error ? err.message : "Download failed"}`,
+			`\nx ${err instanceof Error ? err.message : "Download failed"}`,
 		);
 		try {
 			const { unlink } = await import("node:fs/promises");

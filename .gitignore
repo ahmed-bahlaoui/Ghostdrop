@@ -62,9 +62,9 @@ postgres-data/
 # Redis local data
 redis-data/
 
-# Agents
-AGENTS.md
-GEMINI.md
+# Agents (root only — package-level AGENTS.md is allowed)
+/AGENTS.md
+/GEMINI.md
 
 # Text files
 *.txt
