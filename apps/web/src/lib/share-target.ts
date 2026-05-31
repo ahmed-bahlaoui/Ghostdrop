@@ -1,5 +1,5 @@
-import { selectFile, state } from "./state.svelte.js";
 import type { SharedFileRecord } from "./state.svelte.js";
+import { selectFile, state } from "./state.svelte.js";
 
 const shareTargetDbName = "ghostdrop-share-target";
 const shareTargetStore = "shares";

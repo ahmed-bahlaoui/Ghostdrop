@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { state, goBackToPeek } from "../lib/state.svelte.js";
+import { goBackToPeek, state } from "../lib/state.svelte.js";
 </script>
 
 {#if state.imagePreviewUrl}

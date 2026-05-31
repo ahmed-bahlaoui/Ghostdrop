@@ -1,107 +1,108 @@
 <script lang="ts">
-	import { downloadFileBlob, previewFileBlob } from "../lib/api.js";
-	import { decryptFile } from "../lib/crypto.js";
-	import {
-		isTextNote,
-		isImage,
-		formatSize,
-		formatExpiry,
-		normalizeTransferMetadata,
-	} from "../lib/format.js";
-	import {
-		state,
-		revokeImagePreviewUrl,
-		goBack,
-		resetReceiveState,
-	} from "../lib/state.svelte.js";
+import { downloadFileBlob, previewFileBlob } from "../lib/api.js";
+import { decryptFile } from "../lib/crypto.js";
+import {
+	formatExpiry,
+	formatSize,
+	isImage,
+	isTextNote,
+	normalizeTransferMetadata,
+} from "../lib/format.js";
+import {
+	goBack,
+	resetReceiveState,
+	revokeImagePreviewUrl,
+	state,
+} from "../lib/state.svelte.js";
 
-	async function handleViewNote() {
-		if (!state.fileMeta) return;
+async function handleViewNote() {
+	if (!state.fileMeta) return;
 
-		state.status = { type: "loading", message: "Opening note..." };
-		state.noteCopied = false;
-		revokeImagePreviewUrl();
+	state.status = { type: "loading", message: "Opening note..." };
+	state.noteCopied = false;
+	revokeImagePreviewUrl();
 
-		try {
-			const blob = await previewFileBlob(state.peekedCode);
-			const file = await decryptBlob(blob);
-			state.noteContent = await file.text();
-			state.status = { type: "idle", message: "" };
-			state.view = "note";
-		} catch (err: unknown) {
-			console.error("Note view error:", err);
-			state.status = {
-				type: "error",
-				message: err instanceof Error ? err.message : "Note could not be opened",
-			};
-		}
+	try {
+		const blob = await previewFileBlob(state.peekedCode);
+		const file = await decryptBlob(blob);
+		state.noteContent = await file.text();
+		state.status = { type: "idle", message: "" };
+		state.view = "note";
+	} catch (err: unknown) {
+		console.error("Note view error:", err);
+		state.status = {
+			type: "error",
+			message: err instanceof Error ? err.message : "Note could not be opened",
+		};
 	}
+}
 
-	async function handleViewImage() {
-		if (!state.fileMeta) return;
+async function handleViewImage() {
+	if (!state.fileMeta) return;
 
-		state.status = { type: "loading", message: "Opening image..." };
-		revokeImagePreviewUrl();
+	state.status = { type: "loading", message: "Opening image..." };
+	revokeImagePreviewUrl();
 
-		try {
-			const blob = await previewFileBlob(state.peekedCode);
-			const file = await decryptBlob(blob);
-			state.imagePreviewUrl = URL.createObjectURL(file);
-			state.status = { type: "idle", message: "" };
-			state.view = "image";
-		} catch (err: unknown) {
-			console.error("Image preview error:", err);
-			state.status = {
-				type: "error",
-				message: err instanceof Error ? err.message : "Image could not be opened",
-			};
-		}
+	try {
+		const blob = await previewFileBlob(state.peekedCode);
+		const file = await decryptBlob(blob);
+		state.imagePreviewUrl = URL.createObjectURL(file);
+		state.status = { type: "idle", message: "" };
+		state.view = "image";
+	} catch (err: unknown) {
+		console.error("Image preview error:", err);
+		state.status = {
+			type: "error",
+			message: err instanceof Error ? err.message : "Image could not be opened",
+		};
 	}
+}
 
-	async function handleDownloadFromPeek() {
-		state.status = { type: "loading", message: "Download starting..." };
+async function handleDownloadFromPeek() {
+	state.status = { type: "loading", message: "Download starting..." };
 
-		try {
-			const blob = await downloadFileBlob(state.peekedCode);
-			const file = await decryptBlob(blob);
-			const url = URL.createObjectURL(file);
-			const link = document.createElement("a");
-			link.href = url;
-			link.download = file.name || `ghostdrop-${state.peekedCode}`;
-			document.body.appendChild(link);
-			link.click();
-			link.remove();
-			setTimeout(() => URL.revokeObjectURL(url), 0);
-			resetReceiveState();
-			state.status = { type: "idle", message: "" };
-		} catch (err: unknown) {
-			console.error("Download error:", err);
-			resetReceiveState();
-			state.status = {
-				type: "error",
-				message: err instanceof Error ? err.message : "Download failed",
-			};
-		}
+	try {
+		const blob = await downloadFileBlob(state.peekedCode);
+		const file = await decryptBlob(blob);
+		const url = URL.createObjectURL(file);
+		const link = document.createElement("a");
+		link.href = url;
+		link.download = file.name || `ghostdrop-${state.peekedCode}`;
+		document.body.appendChild(link);
+		link.click();
+		link.remove();
+		setTimeout(() => URL.revokeObjectURL(url), 0);
+		resetReceiveState();
+		state.status = { type: "idle", message: "" };
+	} catch (err: unknown) {
+		console.error("Download error:", err);
+		resetReceiveState();
+		state.status = {
+			type: "error",
+			message: err instanceof Error ? err.message : "Download failed",
+		};
 	}
+}
 
-	async function decryptBlob(encryptedBlob: Blob): Promise<File> {
-		const meta = normalizeTransferMetadata(state.fileMeta);
-		if (meta.encryption.algorithm === "none") {
-			return new File([encryptedBlob], meta.filename, {
-				type: meta.mimeType || "application/octet-stream",
-			});
-		}
-		if (!meta.encryption.iv) throw new Error("Transfer is missing encryption metadata");
-		const key = state.receiveKey.trim();
-		if (!key) throw new Error("Decryption key is required");
-		return decryptFile({
-			encryptedBlob,
-			keyBase64Url: key,
-			ivBase64Url: meta.encryption.iv,
-			filename: meta.filename,
-			mimeType: meta.mimeType,
+async function decryptBlob(encryptedBlob: Blob): Promise<File> {
+	const meta = normalizeTransferMetadata(state.fileMeta);
+	if (meta.encryption.algorithm === "none") {
+		return new File([encryptedBlob], meta.filename, {
+			type: meta.mimeType || "application/octet-stream",
 		});
 	}
+	if (!meta.encryption.iv)
+		throw new Error("Transfer is missing encryption metadata");
+	const key = state.receiveKey.trim();
+	if (!key) throw new Error("Decryption key is required");
+	return decryptFile({
+		encryptedBlob,
+		keyBase64Url: key,
+		ivBase64Url: meta.encryption.iv,
+		filename: meta.filename,
+		mimeType: meta.mimeType,
+	});
+}
 </script>
 
 {#if state.fileMeta}

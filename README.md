@@ -275,16 +275,6 @@ Encryption metadata notes:
 | **File Integrity** | SHA-256 checksums in transfer metadata for download verification. |
 | **mDNS Discovery** | Local network discovery via `ghostdrop.local` for LAN-only sharing without a server. |
 
-### Known Issue
-
-- Android local-IP HTTPS can fail due to stricter certificate validation. Use explicit `http://<LAN-IP>` for local device testing on the staging environment.
-
-## Coding Conventions
-
-- TypeScript everywhere
-- API imports must use `.js` extensions (ESM / NodeNext)
-- Prefer Svelte Runes (`$state`, `$derived`) for frontend reactivity
-
 ## Local Staging Notes
 
 - Containers expose Caddy on `80/443`.

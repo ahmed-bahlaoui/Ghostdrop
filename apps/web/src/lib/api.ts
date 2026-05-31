@@ -1,5 +1,5 @@
-import type { TransferMetadata } from "./state.svelte.js";
 import { normalizeTransferMetadata } from "./format.js";
+import type { TransferMetadata } from "./state.svelte.js";
 
 // --- CONFIGURATION ---
 const API_OVERRIDE = import.meta.env.VITE_API_URL ?? "";
@@ -52,7 +52,11 @@ export async function handshakeTransfer(params: {
 		throw new Error(errorMessage);
 	}
 
-	return res.json() as Promise<{ code: string; objectKey: string; expiresAt: string }>;
+	return res.json() as Promise<{
+		code: string;
+		objectKey: string;
+		expiresAt: string;
+	}>;
 }
 
 export async function uploadFile(code: string, file: File) {

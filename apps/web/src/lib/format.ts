@@ -1,5 +1,5 @@
-import { transferCodeLength, state } from "./state.svelte.js";
 import type { TransferMetadata } from "./state.svelte.js";
+import { state, transferCodeLength } from "./state.svelte.js";
 
 export function stripTransferCode(value: string): string {
 	return value
