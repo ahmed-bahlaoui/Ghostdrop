@@ -259,12 +259,12 @@ Encryption metadata notes:
 - Dockerized staging and production environments.
 - SEO fundamentals (meta tags, robots, open graph, sitemap).
 - Atomic download count enforcement (TOCTOU fix), upload completion guard, preview endpoint.
+- GhostDrop CLI for terminal-based file sharing (send, receive, E2EE with AES-256-GCM, QR codes, interactive menu).
 
 ### Upcoming
 
 | Feature | Description |
 |---------|-------------|
-| **CLI Tool** | Upload, download, and peek transfers from the terminal. E2EE support, progress bars, and config file for self-hosted endpoints. |
 | **UI Makeover** | Full redesign with dark mode, drag & drop, multi-file support, upload progress indicators, and a polished landing page. |
 | **SEO & Infra** | Structured data, performance optimization, Cloudflare proxy with DDoS protection. |
 | **Chunked Encryption** | Stream large files through browser encryption in chunks to reduce memory pressure. |

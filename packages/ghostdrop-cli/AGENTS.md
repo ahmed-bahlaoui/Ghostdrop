@@ -111,12 +111,9 @@ pnpm --filter ghostdrop-cli build
 
 # Run the orchestrated demo script:
 .\demo.ps1
-
-# Record as GIF with vhs:
-vhs demo.tape
 ```
 
-`demo.ps1` orchestrates a full end-to-end flow: creates test file → shows --help → unencrypted send+receive (SHA256 verified) → E2EE send (encryption, share link) → E2EE receive+decrypt (SHA256 verified). Each CLI subcommand is echoed before execution so the viewer sees the exact command used.
+`demo.ps1` (project root) orchestrates a full end-to-end flow: creates test file → shows `--help` → unencrypted send+receive (SHA256 verified) → E2EE send (encryption, share link) → E2EE receive+decrypt (SHA256 verified). Each CLI subcommand is echoed before execution.
 
 ## Key Files
 
@@ -132,7 +129,6 @@ vhs demo.tape
 | `src/lib/config.ts` | Env var resolution |
 | `src/lib/qr.ts` | Terminal QR code (createRequire for CJS module) |
 | `../../demo.ps1` | Orchestrated demo script (project root) |
-| `../../demo.tape` | vhs recording tape (project root) |
 
 ## Coding Conventions
 
