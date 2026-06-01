@@ -1,4 +1,7 @@
-# GhostDrop: Free temporary and anonymous file sharing online
+![alt text](image.png)
+## New 🚀: The GhostDrop CLI: file sharing directly into your terminal,
+![Demo gif](mini.gif)
+
 ## Live at: https://ghostdrop.app
 
 ![Application Screenshot](screenshot.png)
