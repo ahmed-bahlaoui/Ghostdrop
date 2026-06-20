@@ -20,20 +20,18 @@ async function handleShareTarget(request) {
     const sharedFiles = formData
       .getAll("file")
       .filter((value) => value instanceof File && value.size > 0);
-    const firstFile = sharedFiles[0] ?? null;
-
-    if (firstFile) {
+    if (sharedFiles.length > 0) {
       await saveSharedFile({
         id: shareTargetKey,
-        file: firstFile,
-        ignoredFileCount: Math.max(sharedFiles.length - 1, 0),
+        files: sharedFiles,
+        ignoredFileCount: 0,
         receivedAt: Date.now(),
       });
     }
 
     const params = new URLSearchParams({
-      shared: firstFile ? "1" : "0",
-      ignored: String(Math.max(sharedFiles.length - 1, 0)),
+      shared: sharedFiles.length > 0 ? "1" : "0",
+      files: String(sharedFiles.length),
     });
 
     return Response.redirect(`/?${params.toString()}`, 303);

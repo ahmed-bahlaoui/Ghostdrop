@@ -1,5 +1,5 @@
 import type { SharedFileRecord } from "./state.svelte.js";
-import { selectFile, state } from "./state.svelte.js";
+import { selectFiles, state } from "./state.svelte.js";
 
 const shareTargetDbName = "ghostdrop-share-target";
 const shareTargetStore = "shares";
@@ -9,6 +9,7 @@ function clearShareTargetParams() {
 	const url = new URL(window.location.href);
 	url.searchParams.delete("shared");
 	url.searchParams.delete("ignored");
+	url.searchParams.delete("files");
 	window.history.replaceState(
 		{},
 		document.title,
@@ -54,7 +55,9 @@ async function consumeSharedFileRecord(): Promise<SharedFileRecord | null> {
 export async function loadSharedFileFromAndroid() {
 	try {
 		const record = await consumeSharedFileRecord();
-		if (!record?.file) {
+		const sharedFiles = record?.files ?? (record?.file ? [record.file] : []);
+
+		if (sharedFiles.length === 0) {
 			state.status = {
 				type: "error",
 				message: "No shared file was received from Android",
@@ -63,12 +66,12 @@ export async function loadSharedFileFromAndroid() {
 			return;
 		}
 
-		selectFile(record.file);
+		selectFiles(sharedFiles);
 		state.status = {
-			type: record.ignoredFileCount > 0 ? "error" : "success",
+			type: "success",
 			message:
-				record.ignoredFileCount > 0
-					? "Only one file can be sent at a time. GhostDrop loaded the first shared file."
+				sharedFiles.length > 1
+					? `${sharedFiles.length} shared files loaded. GhostDrop will send them as one ZIP archive.`
 					: "Shared file loaded. Review the options, then send.",
 		};
 	} catch (err: unknown) {

@@ -167,6 +167,7 @@ No output means the Compose config is valid.
 docker compose -f compose.prod.yaml --env-file .env.production up -d --build
 ```
 
+
 Check status:
 
 ```bash

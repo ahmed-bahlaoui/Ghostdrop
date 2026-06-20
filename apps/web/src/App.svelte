@@ -140,7 +140,7 @@
 						Anonymous temporary file sharing
 					</h1>
 					<p class="mt-2 text-sm md:text-base text-slate-600 max-w-xl mx-auto">
-						Upload a file, share a short code, and let anyone download it &mdash;
+						Upload files, share a short code, and let anyone download them &mdash;
 						encrypted in the browser, no account required.
 					</p>
 				</section>

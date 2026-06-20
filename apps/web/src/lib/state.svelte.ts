@@ -17,7 +17,8 @@ export interface TransferMetadata {
 
 export interface SharedFileRecord {
 	id: "latest";
-	file: File;
+	file?: File;
+	files?: File[];
 	ignoredFileCount: number;
 	receivedAt: number;
 }
@@ -53,6 +54,7 @@ export let loadedShareTargetFile = false;
 
 export const state = $state({
 	selectedFile: null as File | null,
+	selectedFiles: [] as File[],
 	receiveCode: "",
 	receiveKey: "",
 	peekedCode: "",
@@ -80,7 +82,15 @@ export function revokeImagePreviewUrl() {
 }
 
 export function selectFile(file: File) {
-	state.selectedFile = file;
+	selectFiles([file]);
+}
+
+export function selectFiles(files: File[]) {
+	const selectedFiles = files.filter((file) => file.size > 0);
+	if (selectedFiles.length === 0) return;
+
+	state.selectedFiles = selectedFiles;
+	state.selectedFile = selectedFiles[0] ?? null;
 	state.noteContent = "";
 	state.shareLink = "";
 	state.shareKey = "";

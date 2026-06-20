@@ -2,48 +2,81 @@
 	import { encryptFile } from "../lib/crypto.js";
 	import { handshakeTransfer, uploadFile } from "../lib/api.js";
 	import { handlePasteClipboard } from "../lib/clipboard.js";
-	import { buildEncryptedShareLink } from "../lib/format.js";
+	import { createZipArchive, getTotalFileSize } from "../lib/archive.js";
+	import { buildEncryptedShareLink, formatSize } from "../lib/format.js";
 	import {
-		selectFile,
+		selectFiles,
 		state,
 		expiryOptions,
 		downloadOptions,
 	} from "../lib/state.svelte.js";
 
+	const selectedFileCount = $derived(state.selectedFiles.length);
+	const selectedTotalSize = $derived(getTotalFileSize(state.selectedFiles));
+	const selectedFileLabel = $derived(
+		selectedFileCount > 1
+			? `${selectedFileCount} files selected`
+			: state.selectedFile?.name,
+	);
+	const selectedSizeLabel = $derived(
+		selectedFileCount > 1 ? formatSize(selectedTotalSize) : "",
+	);
+
 	function handleFileSelect(e: Event) {
 		const target = e.target as HTMLInputElement;
-		const file = target.files?.[0];
-		if (file) selectFile(file);
+		const files = Array.from(target.files ?? []);
+		if (files.length > 0) selectFiles(files);
 	}
 
 	async function handleUpload() {
-		if (!state.selectedFile) return;
+		const sourceFiles = [...state.selectedFiles];
+		if (sourceFiles.length === 0) return;
+
+		const isBundle = sourceFiles.length > 1;
 
 		state.status.message = state.endToEndEncryption
-			? "Encrypting file..."
-			: "Initializing transfer...";
+			? isBundle
+				? "Creating ZIP archive..."
+				: "Encrypting file..."
+			: isBundle
+				? "Creating ZIP archive..."
+				: "Initializing transfer...";
 		state.status.type = "loading";
 
 		try {
+			const preparedFile = isBundle
+				? await createZipArchive(sourceFiles)
+				: sourceFiles[0];
+
+			if (!preparedFile) return;
+
+			state.status.message = state.endToEndEncryption
+				? `Encrypting ${preparedFile.name}...`
+				: "Initializing transfer...";
+
 			const encrypted = state.endToEndEncryption
-				? await encryptFile(state.selectedFile)
+				? await encryptFile(preparedFile)
 				: null;
 
 			state.status.message = "Initializing transfer...";
-			const uploadFileBlob = encrypted?.file ?? state.selectedFile;
+			const uploadFileBlob = encrypted?.file ?? preparedFile;
 
 			const { code } = await handshakeTransfer({
-				filename: state.selectedFile.name,
+				filename: preparedFile.name,
 				size: uploadFileBlob.size,
-				originalSize: encrypted?.originalSize,
-				mimeType: state.selectedFile.type || "application/octet-stream",
+				originalSize: encrypted
+					? isBundle
+						? getTotalFileSize(sourceFiles)
+						: encrypted.originalSize
+					: undefined,
+				mimeType: preparedFile.type || "application/octet-stream",
 				encryptionAlgorithm: encrypted?.algorithm ?? "none",
 				encryptionIv: encrypted?.ivBase64Url ?? null,
 				maxDownloads: state.maxDownloads,
 				expiresInMinutes: state.expiresInMinutes,
 			});
 
-			state.status.message = `Uploading ${state.selectedFile.name}...`;
+			state.status.message = `Uploading ${preparedFile.name}...`;
 
 			await uploadFile(code, uploadFileBlob as File);
 
@@ -53,10 +86,13 @@
 				: "";
 			state.status = {
 				type: "success",
-				message: "File ready for ghosting!",
+				message: isBundle
+					? "File bundle ready for ghosting!"
+					: "File ready for ghosting!",
 				code: code,
 			};
 			state.selectedFile = null;
+			state.selectedFiles = [];
 			if (state.fileInput) state.fileInput.value = "";
 		} catch (err: unknown) {
 			console.error("Upload error:", err);
@@ -70,12 +106,13 @@
 
 <div class="bg-white rounded-2xl shadow-xl p-6 md:p-8 transition-all active:scale-[0.99]">
 	<h2 class="text-xl font-black mb-6 text-slate-800 uppercase tracking-tighter">
-		Send File
+		Send Files
 	</h2>
 
 	<div class="relative group overflow-hidden">
 		<input
 			type="file"
+			multiple
 			bind:this={state.fileInput}
 			onchange={handleFileSelect}
 			class="absolute inset-0 opacity-0 z-20 cursor-pointer"
@@ -98,8 +135,13 @@
 				{/if}
 			</div>
 			<p class="mt-4 text-xs font-black uppercase text-center px-4 break-all {state.selectedFile ? 'text-emerald-700' : 'text-slate-400'}">
-				{state.selectedFile ? state.selectedFile.name : "Tap here to choose"}
+				{selectedFileLabel ?? "Tap here to choose"}
 			</p>
+			{#if selectedSizeLabel}
+				<p class="mt-2 text-[10px] font-black uppercase tracking-widest text-emerald-600">
+					{selectedSizeLabel} total - sends as ZIP
+				</p>
+			{/if}
 		</div>
 	</div>
 
