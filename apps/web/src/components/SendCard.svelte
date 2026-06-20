@@ -36,10 +36,10 @@
 
 		state.status.message = state.endToEndEncryption
 			? isBundle
-				? "Creating ZIP archive..."
+				? "Preparing ZIP archive..."
 				: "Encrypting file..."
 			: isBundle
-				? "Creating ZIP archive..."
+				? "Preparing ZIP archive..."
 				: "Initializing transfer...";
 		state.status.type = "loading";
 
@@ -51,7 +51,9 @@
 			if (!preparedFile) return;
 
 			state.status.message = state.endToEndEncryption
-				? `Encrypting ${preparedFile.name}...`
+				? isBundle
+					? "Encrypting archive..."
+					: `Encrypting ${preparedFile.name}...`
 				: "Initializing transfer...";
 
 			const encrypted = state.endToEndEncryption
@@ -76,7 +78,9 @@
 				expiresInMinutes: state.expiresInMinutes,
 			});
 
-			state.status.message = `Uploading ${preparedFile.name}...`;
+			state.status.message = isBundle
+				? "Uploading archive..."
+				: `Uploading ${preparedFile.name}...`;
 
 			await uploadFile(code, uploadFileBlob as File);
 

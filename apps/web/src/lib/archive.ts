@@ -1,6 +1,14 @@
-import { zip, type AsyncZippable } from "fflate";
+import { zipSync, type Zippable } from "fflate";
 
 const ZIP_MIME_TYPE = "application/zip";
+const ZIP_STORE_LEVEL = 0;
+
+export class ZipArchiveError extends Error {
+	constructor() {
+		super("Could not create ZIP archive. Try fewer files or a smaller bundle.");
+		this.name = "ZipArchiveError";
+	}
+}
 
 function getTimestamp(): string {
 	const now = new Date();
@@ -67,29 +75,24 @@ export function getTotalFileSize(files: File[]): number {
 
 export async function createZipArchive(files: File[]): Promise<File> {
 	const seen = new Map<string, number>();
-	const archiveEntries: AsyncZippable = {};
+	const archiveEntries: Zippable = {};
 
-	await Promise.all(
-		files.map(async (file, index) => {
-			const filename = dedupeFilename(
-				sanitizeFilename(file.name, index),
-				seen,
-			);
-			archiveEntries[filename] = await fileToBytes(file);
-		}),
-	);
+	try {
+		await Promise.all(
+			files.map(async (file, index) => {
+				const filename = dedupeFilename(
+					sanitizeFilename(file.name, index),
+					seen,
+				);
+				archiveEntries[filename] = await fileToBytes(file);
+			}),
+		);
 
-	const archiveBytes = await new Promise<Uint8Array<ArrayBuffer>>(
-		(resolve, reject) => {
-			zip(archiveEntries, { level: 6 }, (error, data) => {
-				if (error) {
-					reject(error);
-					return;
-				}
-				resolve(data);
-			});
-		},
-	);
+		const archiveBytes = zipSync(archiveEntries, { level: ZIP_STORE_LEVEL });
 
-	return new File([archiveBytes], getArchiveName(), { type: ZIP_MIME_TYPE });
+		return new File([archiveBytes], getArchiveName(), { type: ZIP_MIME_TYPE });
+	} catch (error) {
+		console.error("ZIP archive creation failed:", error);
+		throw new ZipArchiveError();
+	}
 }
